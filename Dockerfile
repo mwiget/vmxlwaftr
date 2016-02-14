@@ -12,7 +12,7 @@ RUN apt-get install -y --no-install-recommends build-essential git ca-certificat
   libqtcore4 libusbredirhost1 qtcore4-l10n spice-client-glib-usb-acl-helper \
   sshpass openssh-client rsync psmisc glib-2.0 libglib2.0-dev libaio-dev libcap-dev \
   libattr1-dev libpixman-1-dev libncurses5 libncurses5-dev libspice-server1 \
-  && git clone -b vmx_rambutan https://github.com/mwiget/snabbswitch.git \
+  && git clone -b 1to1_mapping https://github.com/mwiget/snabbswitch.git \
   && cd snabbswitch && make -j && make install && make clean && cd .. \
   && git clone -b v2.4.0-snabb --depth 50 https://github.com/SnabbCo/qemu \
   && cd qemu && ./configure --target-list=x86_64-softmmu --disable-sdl && make -j \

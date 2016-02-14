@@ -39,15 +39,16 @@ sub process_new_config {
   my $br_address_idx=-1;
   my $addresses;
   my @softwires;
-  my $mac1;
-  my $mac2;
+  my $mac;
   my @files_config;
   my @files_lwaftr;
   my @files;
 
+  # removing existing config files
+  unlink glob('snabbvmx-lwaftr*');
   while(<IN>) {
     chomp;
-    if ($_ =~ /snabbvmx-lwaftr-(\w+)-(\w+)/) {
+    if ($_ =~ /snabbvmx-lwaftr-(xe\d+)/) {
       if ("" ne $snabbvmx_config_file) {
         if ($closeme == 1) {
           print CFG "  },\n";
@@ -56,14 +57,12 @@ sub process_new_config {
         close CFG;
         close LWA;
       }
-      $mac1 = do{local(@ARGV,$/)="mac_$1";<>};
-      chomp($mac1);
-      $mac2 = do{local(@ARGV,$/)="mac_$2";<>};
-      chomp($mac2);
+      $mac = do{local(@ARGV,$/)="mac_$1";<>};
+      chomp($mac);
       print $file_content,"\n";
 
-      $snabbvmx_config_file = "snabbvmx-lwaftr-$1-$2.cfg";
-      $snabbvmx_lwaftr_file = "snabbvmx-lwaftr-$1-$2.conf";
+      $snabbvmx_config_file = "snabbvmx-lwaftr-$1.cfg";
+      $snabbvmx_lwaftr_file = "snabbvmx-lwaftr-$1.conf";
       push @files, $snabbvmx_config_file;
       push @files, $snabbvmx_lwaftr_file;
       open CFG,">$snabbvmx_config_file.new" or die $@;
@@ -90,7 +89,7 @@ sub process_new_config {
       print CFG "    ipv6_address = \"$1\",\n";
       print CFG "    description = \"b4\",\n";
       print LWA "aftr_ipv6_ip = $1,\n";
-      print LWA "aftr_mac_inet_side = $mac2,\n";
+      print LWA "aftr_mac_inet_side = $mac,\n";
       print LWA "inet_mac = 44:44:44:44:44:44,\n";
     } elsif ($_ =~ /next_hop_mac ([\w.:-]+)/) {
       print CFG "    next_hop_mac = \"$1\",\n";
@@ -100,12 +99,12 @@ sub process_new_config {
       print CFG "    ipv4_address = \"$1\",\n";
       print CFG "    description = \"aftr\",\n";
       print LWA "aftr_ipv4_ip = $1,\n";
-      print LWA "aftr_mac_b4_side = $mac1,\n";
+      print LWA "aftr_mac_b4_side = $mac,\n";
       print LWA "next_hop6_mac = 66:66:66:66:66:66,\n";
     } elsif ($_ =~ /debug_level (\d+)/) {
       print CFG "    debug_level = $1,\n";
-    } elsif ($_ =~ /fragmentation (\w+)/) {
-      print CFG "    fragmentation = $1,\n";
+    } elsif ($_ =~ /fragmentation/) {
+      print CFG "    fragmentation = true,\n";
     } elsif ($_ =~ /cache_refresh_interval (\d+)/) {
       print CFG "    cache_refresh_interval = $1,\n";
     } elsif ($_ =~ /vlan (\d+)/) {

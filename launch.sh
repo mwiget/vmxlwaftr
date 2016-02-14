@@ -3,6 +3,12 @@
 qemu=/usr/local/bin/qemu-system-x86_64
 snabb=/usr/local/bin/snabb
 
+VCPMEM="8000"     # default memory for vRE/VCP in kBytes
+VFPMEM="8000"     # default memory for vPFE/VFP in kBytes
+VCPCPU="1"        # default cpu count for vRE/VCP
+VFPCPU="3"        # default cpu count for vPFE/VFP
+CPULIST="0-4"     # default cpu-list for taskset snabb
+
 #---------------------------------------------------------------------------
 function show_help {
   cat <<EOF
@@ -11,7 +17,8 @@ Usage:
 docker run --name <name> --rm -v \$PWD:/u:ro \\
    --privileged -i -t marcelwiget/vmxlwaftr[:version] [-C <core>] \\
    -c <junos_config_file> -i identity [-l license_file] \\
-   [-m <kbytes>] <image> <pci-address> [<pci-address> ...]
+   [-m <kbytes>] [-M <kBytes>] [-V <cores>] [-W <cores>] \\
+   <image> <pci-address> [<pci-address> ...]
 
 [:version]       Container version. Defaults to :latest
 
@@ -25,8 +32,11 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
  -i  ssh private key for user snabbvmx 
      (required to access lwaftr config via netconf)
 
- -m  Specify the amount of memory for the vRE (default 8000kB)
- -V  number of vCPU's to assign to the vRR
+ -m  Specify the amount of memory for the vRE/VCP (default $VCPMEM kB)
+ -M  Specify the amount of memory for the vPFE/VFP (default $VFPMEM kB)
+
+ -V  number of vCPU's to assign to the vRE/VCP (default $VCPCPU)
+ -W  number of vCPU's to assign to vPFE/VFP (default $VFPCPU)
 
  -C  pin snabb to a specific core(s) (in taskset -c format, defaults to 0)
 
@@ -54,19 +64,19 @@ function cleanup {
   echo "vMX terminated."
 
   pkill snabb
+  pkill qemu
 
-  sleep 2
+  echo "waiting for qemu to terminate ..."
+  while  true;
+  do
+    if [ "1" == "`ps ax|grep qemu|wc -l`" ]; then
+      break
+    fi
+    sleep 5
+    echo "force kill of qemu required ..."
+    pkill -9 qemu
+  done
 
-  if [ ! -z "$PCIDEVS" ]; then
-    echo "Giving 10G ports back to linux kernel"
-    for PCI in $PCIDEVS; do
-      if [ "$PCI" != "0000:00:00.0" ]; then
-        echo -n "$PCI" > /sys/bus/pci/drivers/ixgbe/bind 2>/dev/null
-      fi
-    done
-  fi
-
-  sleep 1
   exit 0
 
 }
@@ -91,12 +101,26 @@ function create_mgmt_bridge {
     ip addr flush dev eth0
     ip link add name $bridge type bridge
     ip link set up $bridge
-    ip addr add $myip/16 dev br0
+    ip addr add $myip/16 dev $bridge
     route add default gw $gateway
     ip link set master $bridge dev eth0
   else
     bridge="docker0"
   fi
+  echo $bridge
+}
+
+function create_int_bridge {
+  bridge="brint"
+  tap="tapint"
+  # need to create a tap interface, so the bridge
+  # will use its mac address 
+  ip tuntap add dev $tap mode tap
+  ip link set $tap up
+  ip link add name $bridge type bridge
+  ip link set master $bridge dev $tap
+  ip link set up $bridge
+  ip addr add 128.0.0.100/16 dev $bridge
   echo $bridge
 }
 
@@ -119,17 +143,6 @@ function mount_hugetables {
   fi
 }
 
-function get_mgmt_ip {
-  # find IP address of em0 or fxp0 in given config
-  grep --after-context=10 'em0 {\|fxp0 {' $1 | while IFS= read -r line || [[ -n "$line" ]]; do
-      ipaddr="$(echo $line | grep address | awk -F "[ /]" '{print $2}')"
-      if [ ! -z "$ipaddr" ]; then
-        echo "$ipaddr"
-        break
-      fi
-  done
-}
-
 function create_vmxhdd {
   >&2 echo "Creating empty vmxhdd.img for vRE ..."
   qemu-img create -f qcow2 /tmp/vmxhdd.img 2G >/dev/null
@@ -144,7 +157,7 @@ function create_config_drive {
   mkdir config_drive/config/license
   cat > config_drive/boot/loader.conf <<EOF
 vmchtype="vmx"
-vm_retype="RE-VRR"
+vm_retype="RE-VMX"
 vm_instance="0"
 EOF
   cp /u/$CONFIG config_drive/config/juniper.conf
@@ -169,7 +182,7 @@ EOF
 }
 
 function launch_debug_shell {
-  echo "Launching shell to troubleshoot"
+  echo "Launching shell to troubleshoot. Exit to continue"
   set +e
   bash
   set -e
@@ -180,9 +193,6 @@ function launch_debug_shell {
 
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
-VCPMEM="8000"
-CPUS="0"
-VCPCPU="1"
 
 while getopts "h?c:m:l:i:C:dV:" opt; do
   case "$opt" in
@@ -190,11 +200,15 @@ while getopts "h?c:m:l:i:C:dV:" opt; do
       show_help
       exit 1
       ;;
-    C)  CPUS=$OPTARG
+    C)  CPULIST=$OPTARG
       ;;
     V)  VCPCPU=$OPTARG
       ;;
+    W)  VFPCPU=$OPTARG
+      ;;
     m)  VCPMEM=$OPTARG
+      ;;
+    M)  VFPMEM=$OPTARG
       ;;
     c)  CONFIG=$OPTARG
       ;;
@@ -215,48 +229,68 @@ shift
 
 if [ ! -f "/u/$image" ]; then
   echo "Error: Can't find image $image"
-  show_help
   exit 1
 fi 
 
-if [ ! -f "/u/$IDENTITY" ]; then
-  echo "Error: Can't find private key file $identity"
-  show_help
+if [[ "$image" =~ \.tgz$ ]]; then
+  echo "extracting VMs from $image ..."
+  tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/*img
+  VCPIMAGE="`ls /tmp/vmx*/images/jinstall64-vmx*img`"
+  cp $VCPIMAGE .
+  VCPIMAGE=$(basename $VCPIMAGE)
+  VFPIMAGE="`ls /tmp/vmx*/images/vFPC*img 2>/dev/null`"
+  cp $VFPIMAGE .
+  VFPIMAGE=$(basename $VFPIMAGE)
+else
+  echo "Error: $image must be a .tgz file"
   exit 1
 fi
 
-cp /u/$image .
+if [ ! -f "/u/$IDENTITY" ]; then
+  echo "Error: Can't find private key file $identity"
+  exit 1
+fi
+
 cp /u/$IDENTITY .
 IDENTITY=$(basename $IDENTITY)
-VCPIMAGE=$(basename $image)
 HDDIMAGE=$(create_vmxhdd)
-MGMTIP=$(get_mgmt_ip /u/$CONFIG)
+MGMTIP="128.0.0.1"
 $(mount_hugetables)
 $(create_config_drive)
 BRMGMT=$(create_mgmt_bridge)
+BRINT=$(create_int_bridge)
 # Create unique 4 digit ID used for this vMX in interface names
 ID=$(printf '%02x%02x%02x' $[RANDOM%256] $[RANDOM%256] $[RANDOM%256])
 # Create tap interfaces for mgmt
-N=0
-VCPMGMT="vcpm$ID$N"
-N=$((N + 1))
+VCPMGMT="vcpm$ID"
+VCPINT="vcpi$ID"
+VFPMGMT="vfpm$ID"
+VFPINT="vfpi$ID"
 $(create_tap_if $VCPMGMT)
+$(create_tap_if $VFPMGMT)
 $(addif_to_bridge $BRMGMT $VCPMGMT)
+$(addif_to_bridge $BRMGMT $VFPMGMT)
+$(create_tap_if $VCPINT)
+$(create_tap_if $VFPINT)
+$(addif_to_bridge $BRINT $VCPINT)
+$(addif_to_bridge $BRINT $VFPINT)
 
 cat <<EOF
 
-  vRE $VCPIMAGE with ${VCPMEM}kB
-  mgmt interface $VCPMGMT IP $MGMTIP BRMGMT $BRMGMT
+  vRE/VCP $VCPIMAGE with ${VCPMEM}kB and ${VCPCPU} cores
+  vPFE/VFP $VFPIMAGE with ${VFPMEM}kB and ${VFPCPU} cores
+  mgmt bridge $BRMGMT with interfaces $VCPMGMT and $VFPMGMT
+  internal interface $VCPMGMT IP $MGMTIP BRMGMT $BRMGMT
   config=$CONFIG license=$LICENSE identity=$IDENTITY
-  CPUS for snabb: $CPUS
+  snabb: taskset -c $CPULIST 
 
 EOF
 
 set -e	#  Exit immediately if a command exits with a non-zero status.
 trap cleanup EXIT SIGINT SIGTERM
 
-INTNR=1	# added to each tap interface to make them unique
-INTID="em"
+INTNR=0	# added to each tap interface to make them unique
+INTID="xe"
 
 echo "Building virtual interfaces and bridges for $@ ..."
 
@@ -266,7 +300,12 @@ for DEV in $@; do # ============= loop thru interfaces start
 
   # add $DEV to list
   PCIDEVS="$PCIDEVS $DEV"
-  macaddr=$MACP:$(printf '%02X'  $INTNR)
+#  macaddr=$MACP:$(printf '%02X'  $INTNR)
+  # create persistent mac address based on hostid and PCI#
+  h=$(hostid)
+  p=$((${DEV:5:2} + ${DEV:11:1}))   # example 0000:05:00.1 -> 6
+  macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${h:6:2}:$(printf '%02X' $p)"
+  echo -n "$PCI" > /sys/bus/pci/drivers/ixgbe/bind 2>/dev/null
   INT="${INTID}${INTNR}"
   echo "$DEV" > pci_$INT
   echo "$macaddr" > mac_$INT
@@ -275,17 +314,34 @@ for DEV in $@; do # ============= loop thru interfaces start
    -netdev type=vhost-user,id=net$INTNR,chardev=char$INTNR \
    -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
 
-  if [ ! -z "$PREVINT" ]; then
-    # launch snabb for every interface pair
-    ./launch_snabb.sh $PREVINT $INT $CPUS &
-    PREVINT=""
-  else
-    PREVINT=$INT
-  fi
+  TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
+  $(create_tap_if $TAP)
+
+  ./launch_snabb.sh $INT $CPULIST &
 
   INTNR=$(($INTNR + 1))
 
 done # ===================================== loop thru interfaces done
+
+#if [ ! -z "$DEBUG" ]; then
+#  launch_debug_shell
+#fi
+
+# launch vPFE/VFP
+
+CMD="$qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM -numa node,memdev=mem \
+  -cpu SandyBridge,+rdrand,+fsgsbase,+f16c \
+  -object memory-backend-file,id=mem,size=${VFPMEM}M,mem-path=/hugetlbfs,share=on \
+  -drive if=ide,file=$VFPIMAGE \
+  -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
+  -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
+  -netdev tap,id=tf1,ifname=$VFPINT,script=no,downscript=no \
+  -device virtio-net-pci,netdev=tf1,mac=$MACP:B1 \
+  -device isa-serial,chardev=charserial0,id=serial0 \
+  -chardev socket,id=charserial0,host=127.0.0.1,port=8700,telnet,server,nowait \
+  $NETDEVS -vnc 127.0.0.1:5901 -daemonize"
+echo $CMD
+$CMD
 
 # Check config for snabbvmx group entries. If there are any
 # run its manager to create an intial set of configs for snabbvmx 
@@ -296,24 +352,20 @@ fi
 
 if [ -f /u/$LICENSE ]; then
   cp /u/$LICENSE .
-  LICENSE=$(basename $IDENTITY)
+  LICENSE=$(basename $LICENSE)
   ./add_license.sh $MGMTIP $IDENTITY $LICENSE &
 fi
 
-./launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $CPUS &
+./launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $CPULIST &
 
-if [ ! -z "$DEBUG" ]; then
-  launch_debug_shell
-fi
-
-CMD="$qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM -numa node,memdev=mem \
-  -object memory-backend-file,id=mem,size=${VCPMEM}M,mem-path=/hugetlbfs,share=on \
+CMD="$qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \
   -usb -usbdevice disk:format=raw:metadata.img \
   -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
   -netdev tap,id=tc0,ifname=$VCPMGMT,script=no,downscript=no \
-  -device e1000,netdev=tc0,mac=$MACP:99 $NETDEVS -nographic"
-
+  -device e1000,netdev=tc0,mac=$MACP:A0 \
+  -netdev tap,id=tc1,ifname=$VCPINT,script=no,downscript=no \
+  -device virtio-net-pci,netdev=tc1,mac=$MACP:B0 -nographic"
 echo $CMD
 $CMD
 

@@ -1,10 +1,9 @@
 #!/bin/bash
-INT1=$1
-INT2=$2
-CPUS=$3
+INT=$1
+CPUS=$2
 
 if [ -z "$CPUS" ]; then
-  echo "Usage: $0 emX emY cpus"
+  echo "Usage: $0 xeX cpu"
   exit 1
 fi
 
@@ -17,9 +16,9 @@ do
     cp /u/snabb /tmp/ 2>/dev/null
     SNABB=/tmp/snabb
   fi
-  echo "launch snabbvmx for $INT1 and $INT2 ..."
+  echo "launch snabbvmx for $INT ..."
   $SNABB gc # removing stale runtime files created by Snabb
-  CMD="taskset -c $CPUS $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT1}-${INT2}.cfg --v6_id $INT1 --v6_pci `cat pci_$INT1` --v6_mac `cat mac_$INT1` --v4_id $INT2 --v4_pci `cat pci_$INT2` --v4_mac `cat mac_$INT2` --sock %s.socket"
+  CMD="taskset -c $CPUS $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci `cat pci_$INT` --mac `cat mac_$INT` --sock %s.socket"
   echo $CMD
   $CMD
   sleep 5

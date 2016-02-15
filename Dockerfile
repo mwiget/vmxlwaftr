@@ -3,7 +3,7 @@ MAINTAINER Marcel Wiget
 
 # Install enough packages to compile snabb and qemu
 RUN apt-get update
-RUN apt-get install -y --no-install-recommends net-tools iproute2 dosfstools expect tcpdump libssl-dev
+RUN apt-get install -y --no-install-recommends net-tools iproute2 dosfstools expect tcpdump
 # fix usr/sbin/tcpdump: error while loading shared libraries: libcrypto.so.1.0.0: cannot open shared object file: Permission denied issue by moving it into /sbin
 RUN mv /usr/sbin/tcpdump /sbin/
 

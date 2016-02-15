@@ -92,22 +92,18 @@ function create_tap_if {
 }
 
 function create_mgmt_bridge {
-  if [ -z "`ifconfig docker0 >/dev/null 2>/dev/null && echo notfound`" ]; then
-    # Running without --net=host. Create local bridge for MGMT and place
-    # eth0 in it.
-    bridge="br0"
-    myip=`ifconfig | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p'`
-    gateway=`ip -4 route list 0/0 |cut -d' ' -f3`
-    ip addr flush dev eth0
-    ip link add name $bridge type bridge
-    ip link set up $bridge
-    ip addr add $myip/16 dev $bridge
-    route add default gw $gateway
-    ip link set master $bridge dev eth0
-  else
-    bridge="docker0"
-  fi
-  echo $bridge
+# Requires network isolation (without --net=host). 
+# Create local bridge br0 for MGMT and place eth0 in it
+bridge="br0"
+myip=`ifconfig | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p'`
+gateway=`ip -4 route list 0/0 |cut -d' ' -f3`
+ip addr flush dev eth0
+ip link add name $bridge type bridge
+ip link set up $bridge
+ip addr add $myip/16 dev $bridge
+route add default gw $gateway
+ip link set master $bridge dev eth0
+echo $bridge
 }
 
 function create_int_bridge {
@@ -303,7 +299,7 @@ for DEV in $@; do # ============= loop thru interfaces start
 #  macaddr=$MACP:$(printf '%02X'  $INTNR)
   # create persistent mac address based on hostid and PCI#
   h=$(hostid)
-  p=$((${DEV:5:2} + ${DEV:11:1}))   # example 0000:05:00.1 -> 6
+  p=$((${DEV:5:2} * 16 + ${DEV:11:1}))   # example 0000:05:00.1 -> 51
   macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${h:6:2}:$(printf '%02X' $p)"
   echo -n "$PCI" > /sys/bus/pci/drivers/ixgbe/bind 2>/dev/null
   INT="${INTID}${INTNR}"

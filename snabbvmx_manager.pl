@@ -44,14 +44,13 @@ sub process_new_config {
   my @files_lwaftr;
   my @files;
 
-  # removing existing config files
-  unlink glob('snabbvmx-lwaftr*');
   while(<IN>) {
     chomp;
     if ($_ =~ /snabbvmx-lwaftr-(xe\d+)/) {
       if ("" ne $snabbvmx_config_file) {
         if ($closeme == 1) {
           print CFG "  },\n";
+          $closeme = 0;
         }
         print CFG "}\n";
         close CFG;
@@ -72,6 +71,13 @@ sub process_new_config {
       print LWA "binding_table = $snabbvmx_binding_file,\n";
     } elsif ($_ =~ /snabbvmx-lwaftr-binding/) {
       open BDG,">$snabbvmx_binding_file.new" or die $@;
+    } elsif ($_ =~ /apply-macro settings/) {
+      if ($closeme == 1) {
+        print CFG "  },\n";
+        $closeme = 0;
+      }
+      print CFG "  settings = {\n";
+      $closeme = 1;
     } elsif ($_ =~ /apply-macro ipv6_interface/) {
       if ($closeme == 1) {
         print CFG "  },\n";
@@ -85,29 +91,31 @@ sub process_new_config {
       }
       print CFG "  ipv4_interface = {\n";
       $closeme = 1;
-    } elsif ($_ =~ /ipv6_address ([\w:]+)/) {
+    } elsif ($_ =~ /ipv6_address\s+([\w:]+)/) {
       print CFG "    ipv6_address = \"$1\",\n";
       print CFG "    description = \"b4\",\n";
       print LWA "aftr_ipv6_ip = $1,\n";
       print LWA "aftr_mac_inet_side = $mac,\n";
       print LWA "inet_mac = 44:44:44:44:44:44,\n";
-    } elsif ($_ =~ /next_hop_mac ([\w.:-]+)/) {
+    } elsif ($_ =~ /next_hop_mac\s+([\w.:-]+)/) {
       print CFG "    next_hop_mac = \"$1\",\n";
-    } elsif ($_ =~ /service_mac ([\w.:-]+)/) {
+    } elsif ($_ =~ /service_mac\s+([\w.:-]+)/) {
       print CFG "    service_mac = \"$1\",\n";
-    } elsif ($_ =~ /ipv4_address ([\w.]+)/) {
+    } elsif ($_ =~ /ipv4_address\s+([\w.]+)/) {
       print CFG "    ipv4_address = \"$1\",\n";
       print CFG "    description = \"aftr\",\n";
       print LWA "aftr_ipv4_ip = $1,\n";
       print LWA "aftr_mac_b4_side = $mac,\n";
       print LWA "next_hop6_mac = 66:66:66:66:66:66,\n";
-    } elsif ($_ =~ /debug_level (\d+)/) {
+    } elsif ($_ =~ /ring_buffer_size\s+(\d+)/) {
+      print CFG "    ring_buffer_size = $1,\n";
+    } elsif ($_ =~ /debug_level\s+(\d+)/) {
       print CFG "    debug_level = $1,\n";
     } elsif ($_ =~ /fragmentation/) {
       print CFG "    fragmentation = true,\n";
-    } elsif ($_ =~ /cache_refresh_interval (\d+)/) {
+    } elsif ($_ =~ /cache_refresh_interval\s+(\d+)/) {
       print CFG "    cache_refresh_interval = $1,\n";
-    } elsif ($_ =~ /vlan (\d+)/) {
+    } elsif ($_ =~ /vlan\s+(\d+)/) {
       print CFG "    vlan = $1,\n";
     } elsif ($_ =~ /(\w+filter)\s+([^;]+)/) {
       my $filter_name="$1";
@@ -167,26 +175,39 @@ sub process_new_config {
 
   # compare the generated files and kick snabbvmx accordingly!
   my $signal="";   # default is no change, no signal needed
-  if (&file_changed($snabbvmx_binding_file) > 0) {
-    print("Binding table changed. Recompiling on cpus $cores...\n");
-    `taskset -c $cores /usr/local/bin/snabb lwaftr compile-binding-table $snabbvmx_binding_file`;
-    `ls -l $snabbvmx_binding_file.o`;
-    sleep 1;
-    print("Recompiling complete. Signaling running snabbvmx ...\n");
-    $psids=`ps ax|grep 'snabb snabbvmx'|grep -v grep|awk {'print \$1'}`;
-    for (split ' ', $psids) {
-      print("Forcing reload for snabb process id $_\n");
-      `taskset -c $cores /usr/local/bin/snabb lwaftr control $_ reload`;
+
+  if (@files) {
+    foreach my $file (@files) {
+      if (&file_changed($file))  {
+        $signal='TERM';
+      } else {
+      }
     }
-    `/usr/local/bin/snabb gc`;  # removing stale counters 
+  } else {
+    # removing existing config files
+    unlink glob('snabbvmx-lwaftr*');
+    $signal='TERM';
   }
 
-  foreach my $file (@files) {
-    if (&file_changed($file))  {
-      print("Config has changed for $file\n");
-      $signal='TERM';
+  if ("" == $signal) { 
+    if (-f $snabbvmx_binding_file) {
+      if (&file_changed($snabbvmx_binding_file) > 0) {
+        print("Binding table changed. Recompiling on cpus $cores...\n");
+        `taskset -c $cores /usr/local/bin/snabb lwaftr compile-binding-table $snabbvmx_binding_file`;
+        sleep 1;
+        print("Recompiling complete. Signaling running snabbvmx ...\n");
+        $psids=`ps ax|grep 'snabb snabbvmx'|grep -v grep|awk {'print \$1'}`;
+        for (split ' ', $psids) {
+          print("Forcing reload for snabb process id $_\n");
+          `taskset -c $cores /usr/local/bin/snabb lwaftr control $_ reload`;
+        }
+        `/usr/local/bin/snabb gc`;  # removing stale counters 
+      }
+    } else {
+      rename "$snabbvmx_binding_file.new", $snabbvmx_binding_file;
     }
-  }
+  } 
+
   if ($signal) {
     print("sending $signal to process snabb snabbvmx\n");
     `pkill -$signal -f 'snabb snabbvmx'`;
@@ -232,6 +253,9 @@ sub check_config {
 }
 
 #===============================================================
+# main()
+#===============================================================
+#
 if ("" eq $identity && -f $ip) {
   my $newfile = "/tmp/newfile";
   open NEW, ">$newfile" || die "can't write to file $newfile";

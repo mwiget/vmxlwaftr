@@ -63,7 +63,6 @@ function cleanup {
   echo ""
   echo "vMX terminated."
 
-  pkill snabb
   pkill qemu
 
   echo "waiting for qemu to terminate ..."
@@ -285,10 +284,10 @@ EOF
 set -e	#  Exit immediately if a command exits with a non-zero status.
 trap cleanup EXIT SIGINT SIGTERM
 
+echo "Building virtual interfaces and bridges for $@ ..."
+
 INTNR=0	# added to each tap interface to make them unique
 INTID="xe"
-
-echo "Building virtual interfaces and bridges for $@ ..."
 
 MACP=$(printf "02:%02X:%02X:%02X:%02X" $[RANDOM%256] $[RANDOM%256] $[RANDOM%256] $[RANDOM%256])
 
@@ -299,10 +298,10 @@ for DEV in $@; do # ============= loop thru interfaces start
 #  macaddr=$MACP:$(printf '%02X'  $INTNR)
   # create persistent mac address based on hostid and PCI#
   h=$(hostid)
-  p=$((${DEV:5:2} * 16 + ${DEV:11:1}))   # example 0000:05:00.1 -> 51
-  macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${h:6:2}:$(printf '%02X' $p)"
+  macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${DEV:5:2}:0${DEV:11:1}"
   echo -n "$PCI" > /sys/bus/pci/drivers/ixgbe/bind 2>/dev/null
   INT="${INTID}${INTNR}"
+  INTLIST="$INTLIST $INT"
   echo "$DEV" > pci_$INT
   echo "$macaddr" > mac_$INT
 
@@ -313,11 +312,21 @@ for DEV in $@; do # ============= loop thru interfaces start
   TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
   $(create_tap_if $TAP)
 
-  ./launch_snabb.sh $INT $CPULIST &
-
   INTNR=$(($INTNR + 1))
 
 done # ===================================== loop thru interfaces done
+
+# Check config for snabbvmx group entries. If there are any
+# run its manager to create an intial set of configs for snabbvmx 
+sx="\$(grep ' snabbvmx-' /u/$CONFIG)"
+if [ ! -z "\$sx" ] && [ -f ./snabbvmx_manager.pl ]; then
+    ./snabbvmx_manager.pl /u/$CONFIG
+fi
+
+for INT in $INTLIST; do
+  ./launch_snabb.sh $INT $CPULIST &
+  sleep 2
+done
 
 #if [ ! -z "$DEBUG" ]; then
 #  launch_debug_shell
@@ -338,13 +347,6 @@ CMD="$qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM -numa node,memdev=mem \
   $NETDEVS -vnc 127.0.0.1:5901 -daemonize"
 echo $CMD
 $CMD
-
-# Check config for snabbvmx group entries. If there are any
-# run its manager to create an intial set of configs for snabbvmx 
-sx="\$(grep ' snabbvmx-' /u/$CONFIG)"
-if [ ! -z "\$sx" ] && [ -f ./snabbvmx_manager.pl ]; then
-    ./snabbvmx_manager.pl /u/$CONFIG
-fi
 
 if [ -f /u/$LICENSE ]; then
   cp /u/$LICENSE .

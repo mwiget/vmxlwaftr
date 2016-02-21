@@ -2,9 +2,10 @@ FROM ubuntu:14.04.4
 MAINTAINER Marcel Wiget
 
 # Install enough packages to compile snabb and qemu
-RUN apt-get update
-RUN apt-get install -y --no-install-recommends net-tools iproute2 dosfstools expect tcpdump
-# fix usr/sbin/tcpdump: error while loading shared libraries: libcrypto.so.1.0.0: cannot open shared object file: Permission denied issue by moving it into /sbin
+RUN apt-get update && apt-get install -y --no-install-recommends net-tools \
+  iproute2 dosfstools tcpdump
+
+# fix usr/sbin/tcpdump by moving it into /sbin: error while loading shared libraries: libcrypto.so.1.0.0: cannot open shared object file: Permission denied
 RUN mv /usr/sbin/tcpdump /sbin/
 
 # Download and compile snabb and qemu, then cleanup
@@ -24,8 +25,7 @@ RUN apt-get install -y --no-install-recommends build-essential git ca-certificat
 COPY launch.sh README.md snabbvmx_manager.pl add_license.sh \
   launch_snabbvmx_manager.sh launch_snabb.sh /
 
-# Only during development: Overwrite the one built above. Useful to test before commit
-COPY snabb /usr/local/bin/
+EXPOSE 8700 
 
 ENTRYPOINT ["/launch.sh"]
 

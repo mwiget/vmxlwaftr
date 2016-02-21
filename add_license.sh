@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 MGMTIP=$1
 IDENTITY=$2

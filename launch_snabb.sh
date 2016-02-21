@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 INT=$1
 CPUS=$2
 
@@ -6,6 +6,8 @@ if [ -z "$CPUS" ]; then
   echo "Usage: $0 xeX cpu"
   exit 1
 fi
+
+SLEEP=${INT:2:1}
 
 while :
 do
@@ -16,10 +18,11 @@ do
     cp /u/snabb /tmp/ 2>/dev/null
     SNABB=/tmp/snabb
   fi
-  echo "launch snabbvmx for $INT ..."
+  echo "launch snabbvmx for $INT after $SLEEP seconds ..."
   $SNABB gc # removing stale runtime files created by Snabb
   CMD="taskset -c $CPUS $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci `cat pci_$INT` --mac `cat mac_$INT` --sock %s.socket"
   echo $CMD
+  sleep $SLEEP
   $CMD
-  sleep 5
+  sleep 4
 done

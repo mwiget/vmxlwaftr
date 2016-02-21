@@ -40,8 +40,6 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 
  -C  pin snabb to a specific core(s) (in taskset -c format, defaults to 0)
 
- -d  Enable debug shell (launched before and after qemu runs)
-
 <pci-address>    PCI Address of the Intel 825999 based 10GE port
                  Multiple ports can be specified, space separated
 
@@ -176,20 +174,13 @@ EOF
   umount /mnt
 }
 
-function launch_debug_shell {
-  echo "Launching shell to troubleshoot. Exit to continue"
-  set +e
-  bash
-  set -e
-}
-
 #==================================================================
 # main()
 
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:C:dV:" opt; do
+while getopts "h?c:m:l:i:C:V:" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -210,8 +201,6 @@ while getopts "h?c:m:l:i:C:dV:" opt; do
     l)  LICENSE=$OPTARG
       ;;
     i)  IDENTITY=$OPTARG
-      ;;
-    d)  DEBUG=$(($DEBUG + 1))
       ;;
   esac
 done
@@ -296,8 +285,8 @@ for DEV in $@; do # ============= loop thru interfaces start
   # add $DEV to list
   PCIDEVS="$PCIDEVS $DEV"
 #  macaddr=$MACP:$(printf '%02X'  $INTNR)
-  # create persistent mac address based on hostid and PCI#
-  h=$(hostid)
+  # create persistent mac address based on host-name in junos config file
+  h=$(grep host-name /u/$CONFIG |md5sum)
   macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${DEV:5:2}:0${DEV:11:1}"
   echo -n "$PCI" > /sys/bus/pci/drivers/ixgbe/bind 2>/dev/null
   INT="${INTID}${INTNR}"
@@ -325,12 +314,7 @@ fi
 
 for INT in $INTLIST; do
   ./launch_snabb.sh $INT $CPULIST &
-  sleep 2
 done
-
-#if [ ! -z "$DEBUG" ]; then
-#  launch_debug_shell
-#fi
 
 # launch vPFE/VFP
 
@@ -343,8 +327,8 @@ CMD="$qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM -numa node,memdev=mem \
   -netdev tap,id=tf1,ifname=$VFPINT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf1,mac=$MACP:B1 \
   -device isa-serial,chardev=charserial0,id=serial0 \
-  -chardev socket,id=charserial0,host=127.0.0.1,port=8700,telnet,server,nowait \
-  $NETDEVS -vnc 127.0.0.1:5901 -daemonize"
+  -chardev socket,id=charserial0,host=0.0.0.0,port=8700,telnet,server,nowait \
+  $NETDEVS -daemonize"
 echo $CMD
 $CMD
 
@@ -366,9 +350,5 @@ CMD="$qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -device virtio-net-pci,netdev=tc1,mac=$MACP:B0 -nographic"
 echo $CMD
 $CMD
-
-if [ ! -z "$DEBUG" ]; then
-  launch_debug_shell
-fi
 
 exit  # this will call cleanup, thanks to trap set earlier (hopefully)

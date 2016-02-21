@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 MGMTIP=$1
 IDENTITY=$2
 CORES=$3
@@ -15,6 +15,6 @@ do
      cp /u/snabbvmx_manager.pl /tmp/ 2>/dev/null
      MANAGER=/tmp/snabbvmx_manager.pl
   fi
-  $MANAGER $MGMTIP $IDENTITY
+  $MANAGER $MGMTIP $IDENTITY $CORES
   sleep 5
 done

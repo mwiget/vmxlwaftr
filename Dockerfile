@@ -23,7 +23,7 @@ RUN apt-get install -y --no-install-recommends build-essential git ca-certificat
   && rm -rf /var/lib/apt/lists/* /snabbswitch /qemu
 
 COPY launch.sh README.md snabbvmx_manager.pl add_license.sh \
-  launch_snabbvmx_manager.sh launch_snabb.sh /
+  launch_snabbvmx_manager.sh launch_snabb.sh show_affinity.sh /
 
 EXPOSE 8700 
 

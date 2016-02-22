@@ -216,6 +216,15 @@ if [ ! -f "/u/$image" ]; then
   exit 1
 fi 
 
+# calculate the cpu affinity mask excluding the ones for snabb
+AVAIL_CORES=$(taskset -p $$|cut -d: -f2|cut -d' ' -f2)
+SNABB_AFFINITY=$(taskset -c $CPULIST /usr/bin/env bash -c 'taskset -p $$'|cut -d: -f2|cut -d' ' -f2)
+let AFFINITY_MASK="0x$AVAIL_CORES ^ 0x$SNABB_AFFINITY"
+AFFINITY_MASK=$(printf '%x\n' $AFFINITY_MASK)
+echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
+taskset -p $AFFINITY_MASK $$
+echo "taskset -p $AFFINITY_MASK \$\$" >> /root/.bashrc
+
 if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
   tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/*img
@@ -258,6 +267,7 @@ $(create_tap_if $VCPINT)
 $(create_tap_if $VFPINT)
 $(addif_to_bridge $BRINT $VCPINT)
 $(addif_to_bridge $BRINT $VFPINT)
+
 
 cat <<EOF
 

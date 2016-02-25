@@ -180,7 +180,7 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:C:V:" opt; do
+while getopts "h?c:m:l:i:C:V:W:M:" opt; do
   case "$opt" in
     h|\?)
       show_help

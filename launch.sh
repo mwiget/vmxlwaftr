@@ -338,7 +338,8 @@ done
 
 # launch vPFE/VFP
 
-CMD="$qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM -numa node,memdev=mem \
+CMD="$qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
+  -numa node,memdev=mem -mem-prealloc \
   -cpu SandyBridge,+rdrand,+fsgsbase,+f16c \
   -object memory-backend-file,id=mem,size=${VFPMEM}M,mem-path=/hugetlbfs,share=on \
   -drive if=ide,file=$VFPIMAGE \

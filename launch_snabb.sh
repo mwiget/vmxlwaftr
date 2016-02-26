@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 INT=$1
-CPUS=$2
 
-if [ -z "$CPUS" ]; then
-  echo "Usage: $0 xeX cpu"
-  exit 1
-fi
+DEV=$(cat pci_$INT)
+CORE=${DEV#*/}
+PCI=${DEV%/*}
 
 SLEEP=${INT:2:1}
 
@@ -18,8 +16,8 @@ do
     cp /u/snabb /tmp/ 2>/dev/null
     SNABB=/tmp/snabb
   fi
-  echo "launch snabbvmx for $INT after $SLEEP seconds ..."
-  CMD="taskset -c $CPUS $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci `cat pci_$INT` --mac `cat mac_$INT` --sock %s.socket"
+  echo "launch snabbvmx for $INT on cpu $CORE after $SLEEP seconds ..."
+  CMD="taskset -c $CORE $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --sock %s.socket"
   echo $CMD
   sleep $SLEEP
   $CMD

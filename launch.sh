@@ -7,7 +7,6 @@ VCPMEM="8000"     # default memory for vRE/VCP in kBytes
 VFPMEM="8000"     # default memory for vPFE/VFP in kBytes
 VCPCPU="1"        # default cpu count for vRE/VCP
 VFPCPU="3"        # default cpu count for vPFE/VFP
-CPULIST="0-4"     # default cpu-list for taskset snabb
 
 #---------------------------------------------------------------------------
 function show_help {
@@ -15,10 +14,10 @@ function show_help {
 Usage:
 
 docker run --name <name> --rm -v \$PWD:/u:ro \\
-   --privileged -i -t marcelwiget/vmxlwaftr[:version] [-C <core>] \\
+   --privileged -i -t marcelwiget/vmxlwaftr[:version] \\
    -c <junos_config_file> -i identity [-l license_file] \\
    [-m <kbytes>] [-M <kBytes>] [-V <cores>] [-W <cores>] \\
-   <image> <pci-address> [<pci-address> ...]
+   <image> <pci-address/core> [<pci-address/core> ...]
 
 [:version]       Container version. Defaults to :latest
 
@@ -38,15 +37,14 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
  -V  number of vCPU's to assign to the vRE/VCP (default $VCPCPU)
  -W  number of vCPU's to assign to vPFE/VFP (default $VFPCPU)
 
- -C  pin snabb to a specific core(s) (in taskset -c format, defaults to 0)
-
-<pci-address>    PCI Address of the Intel 825999 based 10GE port
-                 Multiple ports can be specified, space separated
+<pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
+                    core to pin snabb on.
+                    Multiple ports can be specified, space separated
 
 Example:
 docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
   -i -t marcelwiget/vmxlwaftr -c lwaftr1.txt -i snabbvmx.key \\
-  jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0 0000:05:00.0
+  jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0/7 0000:05:00.0/8
 
 EOF
 }
@@ -180,13 +178,11 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:C:V:W:M:" opt; do
+while getopts "h?c:m:l:i:V:W:M:" opt; do
   case "$opt" in
     h|\?)
       show_help
       exit 1
-      ;;
-    C)  CPULIST=$OPTARG
       ;;
     V)  VCPCPU=$OPTARG
       ;;
@@ -215,15 +211,6 @@ if [ ! -f "/u/$image" ]; then
   echo "Error: Can't find image $image"
   exit 1
 fi 
-
-# calculate the cpu affinity mask excluding the ones for snabb
-AVAIL_CORES=$(taskset -p $$|cut -d: -f2|cut -d' ' -f2)
-SNABB_AFFINITY=$(taskset -c $CPULIST /usr/bin/env bash -c 'taskset -p $$'|cut -d: -f2|cut -d' ' -f2)
-let AFFINITY_MASK="0x$AVAIL_CORES ^ 0x$SNABB_AFFINITY"
-AFFINITY_MASK=$(printf '%x\n' $AFFINITY_MASK)
-echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
-taskset -p $AFFINITY_MASK $$
-echo "taskset -p $AFFINITY_MASK \$\$" >> /root/.bashrc
 
 if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
@@ -276,7 +263,6 @@ cat <<EOF
   mgmt bridge $BRMGMT with interfaces $VCPMGMT and $VFPMGMT
   internal interface $VCPMGMT IP $MGMTIP BRMGMT $BRMGMT
   config=$CONFIG license=$LICENSE identity=$IDENTITY
-  snabb: taskset -c $CPULIST 
 
 EOF
 
@@ -290,18 +276,26 @@ INTID="xe"
 
 MACP=$(printf "02:%02X:%02X:%02X:%02X" $[RANDOM%256] $[RANDOM%256] $[RANDOM%256] $[RANDOM%256])
 
+CPULIST=""  # collect cores given to PCIDEVS
 for DEV in $@; do # ============= loop thru interfaces start
 
-  # add $DEV to list
-  PCIDEVS="$PCIDEVS $DEV"
-#  macaddr=$MACP:$(printf '%02X'  $INTNR)
+  # 0000:05:00.0/7 -> PCI=0000:05:00.0, CORE=7
+  CORE=${DEV#*/}
+  PCI=${DEV%/*} 
+  if [ -z "$CPULIST" ]; then
+    CPULIST=$CORE
+  else
+    CPULIST="$CPULIST,$CORE"
+  fi
+  echo "PCI=$PCI CORE=$CORE CPULIST=$CPULIST"
+  # add PCI to list
+  PCIDEVS="$PCIDEVS $PCI"
   # create persistent mac address based on host-name in junos config file
   h=$(grep host-name /u/$CONFIG |md5sum)
-  macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${DEV:5:2}:0${DEV:11:1}"
-  echo -n "$PCI" > /sys/bus/pci/drivers/ixgbe/bind 2>/dev/null
+  macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${PCI:5:2}:0${PCI:11:1}"
   INT="${INTID}${INTNR}"
   INTLIST="$INTLIST $INT"
-  echo "$DEV" > pci_$INT
+  echo "$PCI/$CORE" > pci_$INT
   echo "$macaddr" > mac_$INT
 
   NETDEVS="$NETDEVS -chardev socket,id=char$INTNR,path=./${INT}.socket,server \
@@ -315,6 +309,20 @@ for DEV in $@; do # ============= loop thru interfaces start
 
 done # ===================================== loop thru interfaces done
 
+echo "before creating avail_cores"
+
+# calculate the cpu affinity mask excluding the ones for snabb
+AVAIL_CORES=$(taskset -p $$|cut -d: -f2|cut -d' ' -f2)
+
+echo "CPULIST=$CPULIST AVAIL_CORES=$AVAIL_CORES"
+
+SNABB_AFFINITY=$(taskset -c $CPULIST /usr/bin/env bash -c 'taskset -p $$'|cut -d: -f2|cut -d' ' -f2)
+let AFFINITY_MASK="0x$AVAIL_CORES ^ 0x$SNABB_AFFINITY"
+AFFINITY_MASK=$(printf '%x\n' $AFFINITY_MASK)
+echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
+taskset -p $AFFINITY_MASK $$
+echo "taskset -p $AFFINITY_MASK \$\$" >> /root/.bashrc
+
 # Check config for snabbvmx group entries. If there are any
 # run its manager to create an intial set of configs for snabbvmx 
 sx="\$(grep ' snabbvmx-' /u/$CONFIG)"
@@ -322,8 +330,10 @@ if [ ! -z "\$sx" ] && [ -f ./snabbvmx_manager.pl ]; then
     ./snabbvmx_manager.pl /u/$CONFIG
 fi
 
+# Launching snabb processes after we set excluded the cores
+# from the scheduler
 for INT in $INTLIST; do
-  ./launch_snabb.sh $INT $CPULIST &
+  ./launch_snabb.sh $INT &
 done
 
 # launch vPFE/VFP
@@ -348,7 +358,7 @@ if [ -f /u/$LICENSE ]; then
   ./add_license.sh $MGMTIP $IDENTITY $LICENSE &
 fi
 
-./launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $CPULIST &
+./launch_snabbvmx_manager.sh $MGMTIP $IDENTITY &
 
 CMD="$qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \

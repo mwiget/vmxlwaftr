@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 MGMTIP=$1
 IDENTITY=$2
-CORES=$3
 
 if [ -z "$IDENTITY" ]; then
   echo "Usage: $0 management-ip-address identity.key"
@@ -15,6 +14,6 @@ do
      cp /u/snabbvmx_manager.pl /tmp/ 2>/dev/null
      MANAGER=/tmp/snabbvmx_manager.pl
   fi
-  $MANAGER $MGMTIP $IDENTITY $CORES
+  $MANAGER $MGMTIP $IDENTITY
   sleep 5
 done

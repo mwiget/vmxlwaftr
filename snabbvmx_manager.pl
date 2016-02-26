@@ -4,11 +4,6 @@
 
 my $ip=shift;
 my $identity=shift;
-my $cores=shift;
-
-unless ($cores) {
-  $cores = "0";
-}
 
 my $snabbvmx_binding_file = "snabbvmx-lwaftr.binding";
 
@@ -192,14 +187,14 @@ sub process_new_config {
   if ("" == $signal) { 
     if (-f $snabbvmx_binding_file) {
       if (&file_changed($snabbvmx_binding_file) > 0) {
-        print("Binding table changed. Recompiling on cpus $cores...\n");
-        `taskset -c $cores /usr/local/bin/snabb lwaftr compile-binding-table $snabbvmx_binding_file`;
+        print("Binding table changed. Recompiling ...\n");
+        `/usr/local/bin/snabb lwaftr compile-binding-table $snabbvmx_binding_file`;
         sleep 1;
         print("Recompiling complete. Signaling running snabbvmx ...\n");
         $psids=`ps ax|grep 'snabb snabbvmx'|grep -v grep|awk {'print \$1'}`;
         for (split ' ', $psids) {
           print("Forcing reload for snabb process id $_\n");
-          `taskset -c $cores /usr/local/bin/snabb lwaftr control $_ reload`;
+          `/usr/local/bin/snabb lwaftr control $_ reload`;
         }
         `/usr/local/bin/snabb gc`;  # removing stale counters 
       }

@@ -50,6 +50,8 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 
  -d  launch debug shell before launching vMX
 
+ -X  single core for vPFE and vRE
+
 <pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
                     core to pin snabb on.
                     Multiple ports can be specified, space separated
@@ -197,7 +199,7 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:V:W:M:td" opt; do
+while getopts "h?c:m:l:i:V:W:M:X:td" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -216,6 +218,8 @@ while getopts "h?c:m:l:i:V:W:M:td" opt; do
     l)  LICENSE=$OPTARG
       ;;
     i)  IDENTITY=$OPTARG
+      ;;
+    X)  SINGLECORE=$OPTARG
       ;;
     t)  VMXTAP=1
       ;;
@@ -400,6 +404,10 @@ fi
 if [ ! -z "$DEBUG" ]; then
   echo "DEBUG SHELL. Hit ^C to continue"
   bash
+fi
+
+if [ ! -z "$SINGLECORE" ]; then
+  AFFINITY_MASK=$SINGLECORE
 fi
 
 CMD="taskset $AFFINITY_MASK nice -n 10 $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \

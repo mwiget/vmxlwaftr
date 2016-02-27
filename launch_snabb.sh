@@ -14,8 +14,8 @@ do
   # use that one if yes
   SNABB=/usr/local/bin/snabb
   if [ -f /u/snabb ]; then
-    cp /u/snabb /tmp/ 2>/dev/null
-    SNABB=/tmp/snabb
+    cp /u/snabb / 2>/dev/null
+    SNABB=/snabb
   fi
   echo "launch snabbvmx for $INT on cpu $CORE after $SLEEP seconds ..."
   if [ -z "$VMXTAP" ]; then

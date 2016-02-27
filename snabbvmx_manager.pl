@@ -185,27 +185,25 @@ sub process_new_config {
   }
 
   if ("" == $signal) { 
-    if (-f $snabbvmx_binding_file) {
+    if (-f "$snabbvmx_binding_file.new") {
       if (&file_changed($snabbvmx_binding_file) > 0) {
-        print("Binding table changed. Recompiling ...\n");
+        rename "$snabbvmx_binding_file.new", $snabbvmx_binding_file;
+        print("Binding table changed. Recompiling ... ");
         `/usr/local/bin/snabb lwaftr compile-binding-table $snabbvmx_binding_file`;
-        sleep 1;
-        print("Recompiling complete. Signaling running snabbvmx ...\n");
+        print ("done.\n\n");
         $psids=`ps ax|grep 'snabb snabbvmx'|grep -v grep|awk {'print \$1'}`;
         for (split ' ', $psids) {
           print("Forcing reload for snabb process id $_\n");
           `/usr/local/bin/snabb lwaftr control $_ reload`;
         }
-        `/usr/local/bin/snabb gc`;  # removing stale counters 
       }
-    } else {
-      rename "$snabbvmx_binding_file.new", $snabbvmx_binding_file;
-    }
+    } 
   } 
 
   if ($signal) {
     print("sending $signal to process snabb snabbvmx\n");
     `pkill -$signal -f 'snabb snabbvmx'`;
+    `/usr/local/bin/snabb gc`;  # removing stale counters 
   }
 
 }

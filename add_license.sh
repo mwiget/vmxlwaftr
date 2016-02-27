@@ -24,7 +24,7 @@ while true; do
     echo "transfer successful"
     break;
   fi
-  echo "scp failed ($?), sleeping 5 seconds ..."
+  echo "license upload failed ($?), sleeping 5 seconds ..."
   sleep 5
 done
 

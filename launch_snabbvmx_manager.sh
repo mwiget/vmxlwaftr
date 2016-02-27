@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 MGMTIP=$1
 IDENTITY=$2
+BINDINGS=$3
 
 if [ -z "$IDENTITY" ]; then
   echo "Usage: $0 management-ip-address identity.key"
   exit 1
+fi
+
+if [ -f "$BINDINGS" ]; then
+  /add_bindings.sh $MGMTIP $IDENTITY $BINDINGS 
 fi
 
 while :

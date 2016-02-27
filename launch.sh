@@ -1,5 +1,16 @@
 #!/bin/bash
 #
+#umount /dev/shm
+#mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=1G tmpfs /dev/shm
+
+mkdir /var/run/snabb
+mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
+mkdir /var/run/snmp
+mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
+mkdir /var/run/snmp
+mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
+mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
+
 qemu=/usr/local/bin/qemu-system-x86_64
 snabb=/usr/local/bin/snabb
 
@@ -36,6 +47,8 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 
  -V  number of vCPU's to assign to the vRE/VCP (default $VCPCPU)
  -W  number of vCPU's to assign to vPFE/VFP (default $VFPCPU)
+
+ -d  launch debug shell before launching vMX
 
 <pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
                     core to pin snabb on.
@@ -115,6 +128,12 @@ function create_int_bridge {
   echo $bridge
 }
 
+function create_bridge {
+  bridge=$1
+  ip link add name $bridge type bridge
+  ip link set up $bridge
+}
+
 function mount_hugetables {
   >&2 echo "mounting hugepages ..."
   # mount hugetables, remove directory if this isn't possible due
@@ -178,7 +197,7 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:V:W:M:" opt; do
+while getopts "h?c:m:l:i:V:W:M:td" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -198,6 +217,10 @@ while getopts "h?c:m:l:i:V:W:M:" opt; do
       ;;
     i)  IDENTITY=$OPTARG
       ;;
+    t)  VMXTAP=1
+      ;;
+    d)  DEBUG=1
+      ;;
   esac
 done
 
@@ -216,11 +239,12 @@ if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
   tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/*img
   VCPIMAGE="`ls /tmp/vmx*/images/jinstall64-vmx*img`"
-  cp $VCPIMAGE .
-  VCPIMAGE=$(basename $VCPIMAGE)
+  cp $VCPIMAGE /tmp
+  VCPIMAGE="/tmp/$(basename $VCPIMAGE)"
   VFPIMAGE="`ls /tmp/vmx*/images/vFPC*img 2>/dev/null`"
-  cp $VFPIMAGE .
-  VFPIMAGE=$(basename $VFPIMAGE)
+  cp $VFPIMAGE /tmp
+  VFPIMAGE="/tmp/$(basename $VFPIMAGE)"
+  rm -rf /tmp/vmx*
 else
   echo "Error: $image must be a .tgz file"
   exit 1
@@ -232,10 +256,12 @@ if [ ! -f "/u/$IDENTITY" ]; then
 fi
 
 cp /u/$IDENTITY .
-IDENTITY=$(basename $IDENTITY)
+IDENTITY="/$(basename $IDENTITY)"
 HDDIMAGE=$(create_vmxhdd)
 MGMTIP="128.0.0.1"
-$(mount_hugetables)
+if [ -z "$VMXTAP" ]; then
+  $(mount_hugetables)
+fi
 $(create_config_drive)
 BRMGMT=$(create_mgmt_bridge)
 BRINT=$(create_int_bridge)
@@ -287,26 +313,43 @@ for DEV in $@; do # ============= loop thru interfaces start
   else
     CPULIST="$CPULIST,$CORE"
   fi
-  echo "PCI=$PCI CORE=$CORE CPULIST=$CPULIST"
-  # add PCI to list
-  PCIDEVS="$PCIDEVS $PCI"
-  # create persistent mac address based on host-name in junos config file
-  h=$(grep host-name /u/$CONFIG |md5sum)
-  macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${PCI:5:2}:0${PCI:11:1}"
-  INT="${INTID}${INTNR}"
-  INTLIST="$INTLIST $INT"
-  echo "$PCI/$CORE" > pci_$INT
-  echo "$macaddr" > mac_$INT
+  if [  "12" -eq "${#PCI}" ]; then
+    echo "PCI=$PCI CORE=$CORE CPULIST=$CPULIST"
+    # add PCI to list
+    PCIDEVS="$PCIDEVS $PCI"
+    # create persistent mac address based on host-name in junos config file
+    h=$(grep host-name /u/$CONFIG |md5sum)
+    macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${PCI:5:2}:0${PCI:11:1}"
+    INT="${INTID}${INTNR}"
+    INTLIST="$INTLIST $INT"
+    echo "$PCI/$CORE" > /tmp/pci_$INT
+    echo "$macaddr" > /tmp/mac_$INT
 
-  NETDEVS="$NETDEVS -chardev socket,id=char$INTNR,path=./${INT}.socket,server \
-   -netdev type=vhost-user,id=net$INTNR,chardev=char$INTNR \
-   -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
+    if [ -z "$VMXTAP" ]; then
+      NETDEVS="$NETDEVS -chardev socket,id=char$INTNR,path=./${INT}.socket,server \
+        -netdev type=vhost-user,id=net$INTNR,chardev=char$INTNR \
+        -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
+    else
+      VMXETAP="vmxe$INTNR"
+      VMXSTAP="vmxs$INTNR"
+      VMXBRIDGE="vmxb$INTNR"
+      $(create_tap_if $VMXETAP)
+      $(create_tap_if $VMXSTAP)
+      $(create_bridge $VMXBRIDGE)
+      $(addif_to_bridge $VMXBRIDGE $VMXSTAP)
+      $(addif_to_bridge $VMXBRIDGE $VMXETAP)
+      brctl setageing $VMXBRIDGE 0
+      NETDEVS="$NETDEVS -netdev tap,id=net$INTNR,ifname=$VMXSTAP,script=no,downscript=no \
+        -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
+    fi
 
-  TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
-  $(create_tap_if $TAP)
+    TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
+    $(create_tap_if $TAP)
 
-  INTNR=$(($INTNR + 1))
-
+    INTNR=$(($INTNR + 1))
+  else
+    echo "reserving CPU $CORE for someone else"
+  fi
 done # ===================================== loop thru interfaces done
 
 echo "before creating avail_cores"
@@ -323,25 +366,44 @@ echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
 taskset -p $AFFINITY_MASK $$
 echo "taskset -p $AFFINITY_MASK \$\$" >> /root/.bashrc
 
+BINDINGS=$(grep binding_table_file /u/$CONFIG | awk '{print $2}'|cut -d';' -f1)
+if [ -f /u/$BINDINGS ]; then
+  cp /u/$BINDINGS /tmp/
+  BINDINGS=$(basename $BINDINGS)
+fi
+
 # Check config for snabbvmx group entries. If there are any
 # run its manager to create an intial set of configs for snabbvmx 
 sx="\$(grep ' snabbvmx-' /u/$CONFIG)"
 if [ ! -z "\$sx" ] && [ -f ./snabbvmx_manager.pl ]; then
-    ./snabbvmx_manager.pl /u/$CONFIG
+    cd /tmp/
+    /snabbvmx_manager.pl /u/$CONFIG
 fi
 
 # Launching snabb processes after we set excluded the cores
 # from the scheduler
 for INT in $INTLIST; do
-  ./launch_snabb.sh $INT &
+  cd /tmp && /launch_snabb.sh $INT $VMXTAP &
+
 done
 
 # launch vPFE/VFP
 
-CMD="$qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
-  -numa node,memdev=mem -mem-prealloc \
-  -cpu SandyBridge,+rdrand,+fsgsbase,+f16c \
-  -object memory-backend-file,id=mem,size=${VFPMEM}M,mem-path=/hugetlbfs,share=on \
+if [ -z "$VMXTAP" ]; then
+  MEMBACKEND="\
+    -object memory-backend-file,id=mem,size=${VFPMEM}M,mem-path=/hugetlbfs,share=on \
+    -numa node,memdev=mem -mem-prealloc"
+else
+  MEMBACKEND=""
+fi
+
+if [ ! -z "$DEBUG" ]; then
+  echo "DEBUG SHELL. Hit ^C to continue"
+  bash
+fi
+
+CMD="taskset $AFFINITY_MASK nice -n 10 $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
+  -cpu SandyBridge,+rdrand,+fsgsbase,+f16c $MEMBACKEND \
   -drive if=ide,file=$VFPIMAGE \
   -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
@@ -356,14 +418,14 @@ $CMD
 if [ -f /u/$LICENSE ]; then
   cp /u/$LICENSE .
   LICENSE=$(basename $LICENSE)
-  ./add_license.sh $MGMTIP $IDENTITY $LICENSE &
+  /add_license.sh $MGMTIP $IDENTITY $LICENSE &
 fi
 
-./launch_snabbvmx_manager.sh $MGMTIP $IDENTITY &
+cd /tmp && /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
 
-CMD="$qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
+CMD="taskset $AFFINITY_MASK nice -n 10 $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \
-  -usb -usbdevice disk:format=raw:metadata.img \
+  -usb -usbdevice disk:format=raw:/metadata.img \
   -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
   -netdev tap,id=tc0,ifname=$VCPMGMT,script=no,downscript=no \
   -device e1000,netdev=tc0,mac=$MACP:A0 \

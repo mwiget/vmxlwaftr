@@ -7,8 +7,6 @@ mkdir /var/run/snabb
 mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
 mkdir /var/run/snmp
 mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
-mkdir /var/run/snmp
-mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
 mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
 
 qemu=/usr/local/bin/qemu-system-x86_64
@@ -50,7 +48,7 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 
  -d  launch debug shell before launching vMX
 
- -X  single core for vPFE and vRE
+ -X  cpu list for vPFE and vRE
 
 <pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
                     core to pin snabb on.
@@ -219,7 +217,7 @@ while getopts "h?c:m:l:i:V:W:M:X:td" opt; do
       ;;
     i)  IDENTITY=$OPTARG
       ;;
-    X)  SINGLECORE=$OPTARG
+    X)  QEMUCPULIST=$OPTARG
       ;;
     t)  VMXTAP=1
       ;;
@@ -241,12 +239,12 @@ fi
 
 if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
-  tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/*img
+  tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/vFPC*img --wildcards vmx*/images/jinstall*img
   VCPIMAGE="`ls /tmp/vmx*/images/jinstall64-vmx*img`"
-  cp $VCPIMAGE /tmp
+  mv $VCPIMAGE /tmp
   VCPIMAGE="/tmp/$(basename $VCPIMAGE)"
   VFPIMAGE="`ls /tmp/vmx*/images/vFPC*img 2>/dev/null`"
-  cp $VFPIMAGE /tmp
+  mv $VFPIMAGE /tmp
   VFPIMAGE="/tmp/$(basename $VFPIMAGE)"
   rm -rf /tmp/vmx*
 else
@@ -358,10 +356,15 @@ done # ===================================== loop thru interfaces done
 
 echo "before creating avail_cores"
 
+QEMUTASKSET=""
+if [ ! -z "$QEMUCPULIST" ]; then
+  QEMUTASKSET="taskset -c $QEMUCPULIST"
+fi
+
 # calculate the cpu affinity mask excluding the ones for snabb
 AVAIL_CORES=$(taskset -p $$|cut -d: -f2|cut -d' ' -f2)
 
-echo "CPULIST=$CPULIST AVAIL_CORES=$AVAIL_CORES"
+echo "CPULIST=$CPULIST AVAIL_CORES=$AVAIL_CORES QEMUCPULIST=$QEMUCPULIST"
 
 SNABB_AFFINITY=$(taskset -c $CPULIST /usr/bin/env bash -c 'taskset -p $$'|cut -d: -f2|cut -d' ' -f2)
 let AFFINITY_MASK="0x$AVAIL_CORES ^ 0x$SNABB_AFFINITY"
@@ -406,11 +409,7 @@ if [ ! -z "$DEBUG" ]; then
   bash
 fi
 
-if [ ! -z "$SINGLECORE" ]; then
-  AFFINITY_MASK=$SINGLECORE
-fi
-
-CMD="taskset $AFFINITY_MASK nice -n 10 $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
+CMD="$QEMUTASKSET $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
   -cpu SandyBridge,+rdrand,+fsgsbase,+f16c $MEMBACKEND \
   -drive if=ide,file=$VFPIMAGE \
   -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
@@ -431,7 +430,7 @@ fi
 
 cd /tmp && /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
 
-CMD="taskset $AFFINITY_MASK nice -n 10 $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
+CMD="$QEMUTASKSET $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \
   -usb -usbdevice disk:format=raw:/metadata.img \
   -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \

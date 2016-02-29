@@ -88,7 +88,6 @@ sub process_new_config {
       $closeme = 1;
     } elsif ($_ =~ /ipv6_address\s+([\w:]+)/) {
       print CFG "    ipv6_address = \"$1\",\n";
-      print CFG "    description = \"b4\",\n";
       print LWA "aftr_ipv6_ip = $1,\n";
       print LWA "aftr_mac_inet_side = $mac,\n";
       print LWA "inet_mac = 44:44:44:44:44:44,\n";
@@ -98,14 +97,13 @@ sub process_new_config {
       print CFG "    service_mac = \"$1\",\n";
     } elsif ($_ =~ /ipv4_address\s+([\w.]+)/) {
       print CFG "    ipv4_address = \"$1\",\n";
-      print CFG "    description = \"aftr\",\n";
       print LWA "aftr_ipv4_ip = $1,\n";
       print LWA "aftr_mac_b4_side = $mac,\n";
       print LWA "next_hop6_mac = 66:66:66:66:66:66,\n";
     } elsif ($_ =~ /ring_buffer_size\s+(\d+)/) {
       print CFG "    ring_buffer_size = $1,\n";
-    } elsif ($_ =~ /debug_level\s+(\d+)/) {
-      print CFG "    debug_level = $1,\n";
+    } elsif ($_ =~ /debug\s+(\d+)/) {
+      print CFG "    debug = $1,\n";
     } elsif ($_ =~ /fragmentation/) {
       print CFG "    fragmentation = true,\n";
     } elsif ($_ =~ /cache_refresh_interval\s+(\d+)/) {

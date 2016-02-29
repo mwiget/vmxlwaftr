@@ -335,6 +335,8 @@ for DEV in $@; do # ============= loop thru interfaces start
       VMXETAP="vmxe$INTNR"
       VMXSTAP="vmxs$INTNR"
       VMXBRIDGE="vmxb$INTNR"
+      sysctl net.ipv6.conf.all.forwarding=1
+      sysctl net.ipv4.conf.all.forwarding=1
       $(create_tap_if $VMXETAP)
       $(create_tap_if $VMXSTAP)
       $(create_bridge $VMXBRIDGE)

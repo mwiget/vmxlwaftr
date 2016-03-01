@@ -21,8 +21,7 @@ do
   if [ -z "$VMXTAP" ]; then
     CMD="taskset -c $CORE $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --sock %s.socket"
   else
-    VMXTAP="vm$INT"
-    CMD="taskset -c $CORE $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --tap $VMXTAP"
+    CMD="taskset -c $CORE $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --tap ${INT}_snabb"
   fi
   echo $CMD
   sleep $SLEEP

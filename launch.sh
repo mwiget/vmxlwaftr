@@ -332,18 +332,18 @@ for DEV in $@; do # ============= loop thru interfaces start
         -netdev type=vhost-user,id=net$INTNR,chardev=char$INTNR \
         -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
     else
-      VMXETAP="vmxe$INTNR"
-      VMXSTAP="vmxs$INTNR"
-      VMXBRIDGE="vmxb$INTNR"
+      XE_SNABB="xe${INTNR}_snabb"
+      XE_VMX="xe${INTNR}_vmx"
+      VMXBRIDGE="brxe$INTNR"
       sysctl net.ipv6.conf.all.forwarding=1
       sysctl net.ipv4.conf.all.forwarding=1
-      $(create_tap_if $VMXETAP)
-      $(create_tap_if $VMXSTAP)
+      $(create_tap_if $XE_SNABB)
+      $(create_tap_if $XE_VMX)
       $(create_bridge $VMXBRIDGE)
-      $(addif_to_bridge $VMXBRIDGE $VMXSTAP)
-      $(addif_to_bridge $VMXBRIDGE $VMXETAP)
+      $(addif_to_bridge $VMXBRIDGE $XE_VMX)
+      $(addif_to_bridge $VMXBRIDGE $XE_SNABB)
       brctl setageing $VMXBRIDGE 0
-      NETDEVS="$NETDEVS -netdev tap,id=net$INTNR,ifname=$VMXSTAP,script=no,downscript=no \
+      NETDEVS="$NETDEVS -netdev tap,id=net$INTNR,ifname=$XE_VMX,script=no,downscript=no \
         -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
     fi
 
@@ -393,7 +393,6 @@ fi
 # from the scheduler
 for INT in $INTLIST; do
   cd /tmp && /launch_snabb.sh $INT $VMXTAP &
-
 done
 
 # launch vPFE/VFP

@@ -412,7 +412,7 @@ fi
 
 CMD="$QEMUTASKSET $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
   -cpu SandyBridge,+rdrand,+fsgsbase,+f16c $MEMBACKEND \
-  -drive if=ide,file=$VFPIMAGE \
+  -drive if=ide,file=$VFPIMAGE,format=raw \
   -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
   -netdev tap,id=tf1,ifname=$VFPINT,script=no,downscript=no \

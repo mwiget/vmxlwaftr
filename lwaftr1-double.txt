@@ -1,9 +1,9 @@
-## Last commit: 2016-02-14 06:37:52 UTC by mwiget
+## Last commit: 2016-02-26 08:09:51 UTC by mwiget
 version 15.1F4.15;
 groups {
     snabbvmx-lwaftr-xe0 {
         apply-macro settings {
-          ring_buffer_size 2048;
+            ring_buffer_size 2048;
         }
         apply-macro ipv6_interface {
             ipv6_address 2001:db7:1::1;
@@ -12,26 +12,40 @@ groups {
             policy_icmpv6_outgoing drop;
             icmpv6_rate_limiter_n_packets 6e5;
             icmpv6_rate_limiter_n_seconds 2;
-            cache_refresh_interval 10;
-            fragmentation;
+            cache_refresh_interval 1;
         }
         apply-macro ipv4_interface {
             ipv4_address 172.20.1.16;
             ipv4_mtu 9500;
             policy_icmpv4_incoming drop;
             policy_icmpv4_outgoing drop;
-            cache_refresh_interval 10;
-            fragmentation;
+            cache_refresh_interval 1;
+        }
+    }
+    snabbvmx-lwaftr-xe1 {
+        apply-macro settings {
+            ring_buffer_size 2048;
+        }
+        apply-macro ipv6_interface {
+            ipv6_address 2001:db7:1::1;
+            ipv6_mtu 9500;
+            policy_icmpv6_incoming drop;
+            policy_icmpv6_outgoing drop;
+            icmpv6_rate_limiter_n_packets 6e5;
+            icmpv6_rate_limiter_n_seconds 2;
+            cache_refresh_interval 1;
+        }
+        apply-macro ipv4_interface {
+            ipv4_address 172.20.1.16;
+            ipv4_mtu 9500;
+            policy_icmpv4_incoming drop;
+            policy_icmpv4_outgoing drop;
+            cache_refresh_interval 1;
         }
     }
     snabbvmx-lwaftr-binding {
-        apply-macro softwires_fd00:4600::12 {
-            fc00:1:2:3:4:5:7:127 193.5.1.100,1,6,0;
-            fc00:1:2:3:4:5:7:128 193.5.1.100,2,6,0;
-            fc00:1:2:3:4:5:7:129 193.5.1.100,3,6,0;
-        }
         apply-macro binding_table {
-            binding_table_file binding_table.txt;
+            binding_table_file binding_table_2m.txt;
         }
     }
 }
@@ -104,6 +118,22 @@ interfaces {
             }
         }
     }
+    ge-0/0/1 {
+        mtu 9000;
+        unit 0 {
+            description port-00.1:05:00.1;
+            family inet {
+                address 172.20.1.16/24 {
+                    arp 172.20.1.1 mac 02:44:44:44:44:44;
+                }
+            }
+            family inet6 {
+                address fd00:4601::16/64 {
+                    ndp fd00:4601::1 mac 02:66:66:66:66:66;
+                }
+            }
+        }
+    }
     fxp0 {
         unit 0 {
             description mgmt;
@@ -121,5 +151,26 @@ routing-options {
     }
     static {
         route 0.0.0.0/0 next-hop 172.20.1.1;
+    }
+}
+protocols {
+    lldp {
+        interface all;
+    }
+}
+routing-instances {
+    R1 {
+        instance-type virtual-router;
+        interface ge-0/0/1.0;
+        routing-options {
+            rib R1.inet6.0 {
+                static {
+                    route ::/0 next-hop fd00:4601::1;
+                }
+            }
+            static {
+                route 0.0.0.0/0 next-hop 172.20.1.1;
+            }
+        }
     }
 }

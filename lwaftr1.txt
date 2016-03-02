@@ -1,0 +1,125 @@
+## Last commit: 2016-02-14 06:37:52 UTC by mwiget
+version 15.1F4.15;
+groups {
+    snabbvmx-lwaftr-xe0 {
+        apply-macro settings {
+          ring_buffer_size 2048;
+        }
+        apply-macro ipv6_interface {
+            ipv6_address 2001:db7:1::1;
+            ipv6_mtu 9500;
+            policy_icmpv6_incoming drop;
+            policy_icmpv6_outgoing drop;
+            icmpv6_rate_limiter_n_packets 6e5;
+            icmpv6_rate_limiter_n_seconds 2;
+            cache_refresh_interval 10;
+            fragmentation;
+        }
+        apply-macro ipv4_interface {
+            ipv4_address 172.20.1.16;
+            ipv4_mtu 9500;
+            policy_icmpv4_incoming drop;
+            policy_icmpv4_outgoing drop;
+            cache_refresh_interval 10;
+            fragmentation;
+        }
+    }
+    snabbvmx-lwaftr-binding {
+        apply-macro softwires_fd00:4600::12 {
+            fc00:1:2:3:4:5:7:127 193.5.1.100,1,6,0;
+            fc00:1:2:3:4:5:7:128 193.5.1.100,2,6,0;
+            fc00:1:2:3:4:5:7:129 193.5.1.100,3,6,0;
+        }
+        apply-macro binding_table {
+            binding_table_file binding_table.txt;
+        }
+    }
+}
+system {
+    host-name lwaftr1;
+    root-authentication {
+        encrypted-password "$5$rNhidzzC$Qy8xe73ZCjBPSYUl8IQLhbLaGvGDyZPx6yV3rwar2i/"; ## SECRET-DATA
+    }
+    login {
+        user lab {
+            uid 2002;
+            class super-user;
+            authentication {
+                ssh-dsa "ssh-dss AAAAB3NzaC1kc3MAAACBALQ1gQaOWwm5IdJRW8NkbLEFJS2DDK1YiL02J5RtUy8hWUPb6c41jyEPfu44exHtDASTTRooqIlCuHCpf8D/qvpFJqLa/lY6Gongam4fQdKeQMqTX7kKdSHCOaaEIaxw5WN75YFFSfm76axYkJPK9AlyOXYxAwZyu9Doj1Ir96KpAAAAFQC2PfdISu21YaWGyZz15XmZENTQWwAAAIEAogJ3/OQ6pYnsts/Pzcd0axoF3GQ7tp7cRYU6tPZ6aTPfeQk67tK5EYATpuIADd1J8FSVn8RUJuzyi183ct0LdFss0MkF5unMSdCoaFBTqdeDXzHlc1L/vMssWz/53DaPJspGxYiThQu3wPsmJ1kFh8umNPK8lNY5/zS2xhNfY3IAAACBAJn2X65fa7CcRfmP32rOS0DK1Sby6ACaRJ1dkB1lJYDH+kQnaHRmQx/VCwGf+D3Kqz0tU39Y/TdZrp7xWOxqGmKgqnRnAmcPALsQdg528qoMejZpEvaL551HLsqZmH1ye94iCJfkBgKipZ8oMYP0tEQShebQIQqNGQAwV2ksdOSV lab@sb"; ## SECRET-DATA
+            }
+        }
+        user mwiget {
+            uid 2001;
+            class super-user;
+            authentication {
+                encrypted-password "$5$qOveA7UK$Bf0Iq5fc9RhOGs6b/5bAshsLtb13.GOC4mbTqIDqaS4"; ## SECRET-DATA
+                ssh-dsa "ssh-dss AAAAB3NzaC1kc3MAAACBAMdlCk1NNT2O+np4uzFWFDHP+zTS8uAC6c0mv2miSgAgJxFyfZpJH+HbOuLALCoyPrQbAPb+yPeXvl7xQwAUd94QW3dsX8B70skaxGQMXJdvEu3iDSnpxdeNMW+Ctl4JDHwNoZ93dCxqUqiF5tIE9ock8r1vEZ4d4Xy/LWe+mneVAAAAFQCZ3YEG7uDAfKRxcIK7v4XJyCknCwAAAIA4l8xAexLrEiheg8w8YYGvTtTV20xDaFObLI0fWFpYM0n6g80xkGoM409/1ne6PPqOydCp6dfNcbqf2vCq2WxffjEetMSE5BNk02JctdafO8wiGVFnQd39I+n70SCU/48s/NX+RqWcRgTlwDzp034ZiclDrmrBGVmz5TAJWXT8BgAAAIBbYv/+kxyNdM0HLiQn6/ShTCqK6gkhumDn3a/SS0nHx3LpdlACX9x49a7VTf4tYqctW6LUkE9ei0cvsHWq2ec6Q00UAypCaTtwUjt7vr7HmwuTKV6XOsLkupnEED5jtRgeEz5fuWPIMH6Xg/GENJ5z7N/6AlaOz3Emu6TQtkdwPw== mwiget@mwiget-mba13"; ## SECRET-DATA
+            }
+        }
+        user snabbvmx {
+            uid 2000;
+            class super-user;
+            authentication {
+                ssh-rsa "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDN2NksvlHTtbQ7pbsUq2yByW38U+WIViDBKA9piGdoGtRImgnur9fAFHTcup2GWBUnN1CW6wzRRJjmZgG/A92bk1xixgqNQx9nC+m/9ePOSKVR6yZ24lF1blw0PuZ7p32LOigi/On4ocF/Q5AX3Sn1tbJbJ/tW2cq4nzOCwIdOiDfsexDZRAwPxqFqo/JKqR2TdaZGX8UbkkvJFLibyKIOxZkX53bhD2fyk5wbsG4H6w5tVkCL1jABj9bWJUJbe8PR2C2gHvDH2oX6qRTAm05I55VV+xW8XaMOWIiGfZ/T9MF2/9/EsmGa4ylJIH8nRhiMRaPl7OUeMdKxHFe/pT0x mwiget@st"; ## SECRET-DATA
+            }
+        }
+    }
+    services {
+        ssh;
+        netconf {
+            ssh;
+        }
+    }
+    syslog {
+        user * {
+            any emergency;
+        }
+        file messages {
+            any notice;
+            authorization info;
+        }
+        file interactive-commands {
+            interactive-commands any;
+        }
+    }
+    ntp {
+        boot-server 172.17.0.1;
+        server 172.17.0.1;
+    }
+}
+interfaces {
+    ge-0/0/0 {
+        mtu 9000;
+        unit 0 {
+            description port-0000:05:00.0;
+            family inet {
+                address 172.20.1.16/24 {
+                    arp 172.20.1.1 mac 02:44:44:44:44:44;
+                }
+            }
+            family inet6 {
+                address fd00:4601::16/64 {
+                    ndp fd00:4601::1 mac 02:66:66:66:66:66;
+                }
+            }
+        }
+    }
+    fxp0 {
+        unit 0 {
+            description mgmt;
+            family inet {
+                address 10.0.0.101/24;
+            }
+        }
+    }
+}
+routing-options {
+    rib inet6.0 {
+        static {
+            route ::/0 next-hop fd00:4601::1;
+        }
+    }
+    static {
+        route 0.0.0.0/0 next-hop 172.20.1.1;
+    }
+}

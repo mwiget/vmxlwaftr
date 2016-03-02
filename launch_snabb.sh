@@ -5,8 +5,11 @@ VMXTAP=$2
 DEV=$(cat pci_$INT)
 CORE=${DEV#*/}
 PCI=${DEV%/*}
-
 SLEEP=${INT:2:1}
+
+CPU=$(cat /sys/class/pci_bus/${PCI%:*}/cpulistaffinity | cut -d "-" -f 1)
+NODE=$(numactl -H | grep "cpus: $CPU" | cut -d " " -f 2)
+NUMACTL="numactl --membind=$NODE --physcpubind=$CORE"
 
 while :
 do
@@ -17,11 +20,12 @@ do
     cp /u/snabb / 2>/dev/null
     SNABB=/snabb
   fi
-  echo "launch snabbvmx for $INT on cpu $CORE after $SLEEP seconds ..."
+
+  echo "launch snabbvmx for $INT on cpu $CORE (node $NODE) after $SLEEP seconds ..."
   if [ -z "$VMXTAP" ]; then
-    CMD="taskset -c $CORE $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --sock %s.socket"
+    CMD="$NUMACTL $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --sock %s.socket"
   else
-    CMD="taskset -c $CORE $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --tap ${INT}_snabb"
+    CMD="$NUMACTL $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --tap ${INT}_snabb"
   fi
   echo $CMD
   sleep $SLEEP

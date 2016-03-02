@@ -1,18 +1,10 @@
 #!/bin/bash
 #
-#umount /dev/shm
-#mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=1G tmpfs /dev/shm
-
-mkdir /var/run/snabb
-mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
-mkdir /var/run/snmp
-mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
-mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
 
 qemu=/usr/local/bin/qemu-system-x86_64
 snabb=/usr/local/bin/snabb
 
-VCPMEM="8000"     # default memory for vRE/VCP in kBytes
+VCPMEM="4000"     # default memory for vRE/VCP in kBytes
 VFPMEM="8000"     # default memory for vPFE/VFP in kBytes
 VCPCPU="1"        # default cpu count for vRE/VCP
 VFPCPU="3"        # default cpu count for vPFE/VFP
@@ -197,7 +189,9 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:V:W:M:X:td" opt; do
+NUMANODE=0
+
+while getopts "h?c:m:l:i:V:W:M:X:N:td" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -219,6 +213,8 @@ while getopts "h?c:m:l:i:V:W:M:X:td" opt; do
       ;;
     X)  QEMUCPULIST=$OPTARG
       ;;
+    N)  NUMANODE=$OPTARG
+      ;;
     t)  VMXTAP=1
       ;;
     d)  DEBUG=1
@@ -227,6 +223,13 @@ while getopts "h?c:m:l:i:V:W:M:X:td" opt; do
 done
 
 shift "$((OPTIND-1))"
+
+mkdir /var/run/snabb
+mkdir /var/run/snmp
+numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
+numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
+mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
+
 
 # first parameter is the vMX image
 image=$1
@@ -315,6 +318,7 @@ for DEV in $@; do # ============= loop thru interfaces start
   else
     CPULIST="$CPULIST,$CORE"
   fi
+
   if [  "12" -eq "${#PCI}" ]; then
     echo "PCI=$PCI CORE=$CORE CPULIST=$CPULIST"
     # add PCI to list
@@ -356,12 +360,12 @@ for DEV in $@; do # ============= loop thru interfaces start
   fi
 done # ===================================== loop thru interfaces done
 
-echo "before creating avail_cores"
-
-QEMUTASKSET=""
+QEMUTASKSET="numactl --membind=$NUMANODE"
 if [ ! -z "$QEMUCPULIST" ]; then
-  QEMUTASKSET="taskset -c $QEMUCPULIST"
+  QEMUTASKSET="numactl --membind=$NUMANODE --physcpubind=$QEMUCPULIST"
 fi
+
+echo "QEMUTASKSET=$QEMUTASKSET"
 
 # calculate the cpu affinity mask excluding the ones for snabb
 AVAIL_CORES=$(taskset -p $$|cut -d: -f2|cut -d' ' -f2)
@@ -371,8 +375,8 @@ echo "CPULIST=$CPULIST AVAIL_CORES=$AVAIL_CORES QEMUCPULIST=$QEMUCPULIST"
 SNABB_AFFINITY=$(taskset -c $CPULIST /usr/bin/env bash -c 'taskset -p $$'|cut -d: -f2|cut -d' ' -f2)
 let AFFINITY_MASK="0x$AVAIL_CORES ^ 0x$SNABB_AFFINITY"
 AFFINITY_MASK=$(printf '%x\n' $AFFINITY_MASK)
-echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
-taskset -p $AFFINITY_MASK $$
+#echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
+#taskset -p $AFFINITY_MASK $$
 echo "taskset -p $AFFINITY_MASK \$\$" >> /root/.bashrc
 
 BINDINGS=$(grep binding_table_file /u/$CONFIG | awk '{print $2}'|cut -d';' -f1)
@@ -386,13 +390,13 @@ fi
 sx="\$(grep ' snabbvmx-' /u/$CONFIG)"
 if [ ! -z "\$sx" ] && [ -f ./snabbvmx_manager.pl ]; then
     cd /tmp/
-    /snabbvmx_manager.pl /u/$CONFIG
+    numactl --membind=$NUMANODE /snabbvmx_manager.pl /u/$CONFIG
 fi
 
 # Launching snabb processes after we set excluded the cores
 # from the scheduler
 for INT in $INTLIST; do
-  cd /tmp && /launch_snabb.sh $INT $VMXTAP &
+  cd /tmp && numactl --membind=$NUMANODE /launch_snabb.sh $INT $VMXTAP &
 done
 
 # launch vPFE/VFP
@@ -403,11 +407,6 @@ if [ -z "$VMXTAP" ]; then
     -numa node,memdev=mem -mem-prealloc"
 else
   MEMBACKEND=""
-fi
-
-if [ ! -z "$DEBUG" ]; then
-  echo "DEBUG SHELL. Hit ^C to continue"
-  bash
 fi
 
 CMD="$QEMUTASKSET $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
@@ -421,7 +420,16 @@ CMD="$QEMUTASKSET $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
   -chardev socket,id=charserial0,host=0.0.0.0,port=8700,telnet,server,nowait \
   $NETDEVS -daemonize"
 echo $CMD
+if [ ! -z "$DEBUG" ]; then
+  echo "DEBUG SHELL. Hit ^C to continue"
+  bash
+fi
 $CMD
+
+if [ ! -z "$DEBUG" ]; then
+  echo "DEBUG SHELL. Hit ^C to continue"
+  bash
+fi
 
 if [ -f /u/$LICENSE ]; then
   cp /u/$LICENSE .
@@ -429,7 +437,7 @@ if [ -f /u/$LICENSE ]; then
   /add_license.sh $MGMTIP $IDENTITY $LICENSE &
 fi
 
-cd /tmp && /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
+cd /tmp && numactl --membind=$NUMANODE /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
 
 CMD="$QEMUTASKSET $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \

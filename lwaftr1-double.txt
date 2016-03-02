@@ -1,9 +1,9 @@
-## Last commit: 2016-02-26 08:09:51 UTC by mwiget
+## Last commit: 2016-03-02 11:06:07 UTC by mwiget
 version 15.1F4.15;
 groups {
     snabbvmx-lwaftr-xe0 {
         apply-macro settings {
-            ring_buffer_size 2048;
+            ring_buffer_size 1024;
         }
         apply-macro ipv6_interface {
             ipv6_address 2001:db7:1::1;
@@ -24,7 +24,7 @@ groups {
     }
     snabbvmx-lwaftr-xe1 {
         apply-macro settings {
-            ring_buffer_size 2048;
+            ring_buffer_size 1024;
         }
         apply-macro ipv6_interface {
             ipv6_address 2001:db7:1::1;

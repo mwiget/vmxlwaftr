@@ -42,6 +42,7 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
 ## Release v0.1
 
 [https://github.com/mwiget/vmxlwaftr/tree/vmxlwaftr_v0.1]()
+
 [https://github.com/mwiget/snabbswitch/tree/vmxlwaftr_v0.1]()
 
 ```
@@ -73,6 +74,6 @@ Generator:
 ```
 sudo taskset -c 6 ./snabbvmx generator --pci 0000:04:00.0 --mtu 9600 --mac 02:cf:69:15:05:00 --ipv4 10.10.0.0 --ipv6 2a02:587:f710::40 --lwaftr 2a02:587:f700::100 --count 2000000 --port 1024 --size 508  --rate 10 &
 
-sudo taskset -c 7 ./snabbvmx generator --pci 0000:04:00.1 --mtu 9600 --mac 02:cf:69:15:05:01 --ipv4 10.10.0.0 --ipv6 2a02:587:f710::40 --lwaftr 2a02:587:f700::100 --count 2000000 --port 1024 --size 508  --rate &
+sudo taskset -c 7 ./snabbvmx generator --pci 0000:04:00.1 --mtu 9600 --mac 02:cf:69:15:05:01 --ipv4 10.10.0.0 --ipv6 2a02:587:f710::40 --lwaftr 2a02:587:f700::100 --count 2000000 --port 1024 --size 508  --rate 10 &
 ```
 

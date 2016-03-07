@@ -40,7 +40,8 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 
  -d  launch debug shell before launching vMX
 
- -X  cpu list for vPFE and vRE
+ -P  cpu list for vPFE
+ -R  cpu list for vRE
 
 <pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
                     core to pin snabb on.
@@ -189,9 +190,7 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-NUMANODE=0
-
-while getopts "h?c:m:l:i:V:W:M:X:N:td" opt; do
+while getopts "h?c:m:l:i:V:W:M:P:R:td" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -211,9 +210,9 @@ while getopts "h?c:m:l:i:V:W:M:X:N:td" opt; do
       ;;
     i)  IDENTITY=$OPTARG
       ;;
-    X)  QEMUCPULIST=$OPTARG
+    P)  QEMUVFPCPUS=$OPTARG
       ;;
-    N)  NUMANODE=$OPTARG
+    R)  QEMUVCPCPUS=$OPTARG
       ;;
     t)  VMXTAP=1
       ;;
@@ -224,13 +223,6 @@ done
 
 shift "$((OPTIND-1))"
 
-mkdir /var/run/snabb
-mkdir /var/run/snmp
-numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
-numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
-mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
-
-
 # first parameter is the vMX image
 image=$1
 shift
@@ -239,14 +231,44 @@ if [ ! -f "/u/$image" ]; then
   echo "Error: Can't find image $image"
   exit 1
 fi 
+# find numanode to use based on PCI list.
+# It will simply use the numanode of the last PCI.
+# Using cards on different Nodes is not recommended 
+for DEV in $@; do # ============= loop thru interfaces start
+  PCI=${DEV%/*} 
+  if [ "12" -eq "${#PCI}" ]; then
+    CPU=$(cat /sys/class/pci_bus/${PCI%:*}/cpulistaffinity | cut -d "-" -f 1)
+    NODE=$(numactl -H | grep "cpus: $CPU" | cut -d " " -f 2)
+    if [ -z "$NUMANODE" ]; then
+      NUMANODE=$NODE
+    fi
+    if [ "$NODE" != "$NUMANODE" ]; then 
+      echo "WARNING: Interface $PCI is on numa node $NODE, but request is for node $NUMANODE"
+    else
+      echo "Interface $PCI is on node $NODE"
+    fi
+  fi
+done
+
+mkdir /var/run/snabb
+mkdir /var/run/snmp
+numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
+numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
+mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
+
+
 
 if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
-  tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/vFPC*img --wildcards vmx*/images/jinstall*img
+  tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/vFPC*img --wildcards vmx*/images/jinstall*img --wildcards vmx*/images/vPFE-2*img
   VCPIMAGE="`ls /tmp/vmx*/images/jinstall64-vmx*img`"
   mv $VCPIMAGE /tmp
   VCPIMAGE="/tmp/$(basename $VCPIMAGE)"
   VFPIMAGE="`ls /tmp/vmx*/images/vFPC*img 2>/dev/null`"
+  if [ -z "$VFPIMAGE" ]; then
+    echo "checking for pre 15.1 VFP image .."
+    VFPIMAGE="`ls /tmp/vmx*/images/vPFE-2*img 2>/dev/null`"
+  fi
   mv $VFPIMAGE /tmp
   VFPIMAGE="/tmp/$(basename $VFPIMAGE)"
   rm -rf /tmp/vmx*
@@ -360,21 +382,26 @@ for DEV in $@; do # ============= loop thru interfaces start
   fi
 done # ===================================== loop thru interfaces done
 
-QEMUTASKSET="numactl --membind=$NUMANODE"
-if [ ! -z "$QEMUCPULIST" ]; then
-  QEMUTASKSET="numactl --membind=$NUMANODE --physcpubind=$QEMUCPULIST"
+QEMUVFPNUMA="numactl --membind=$NUMANODE"
+if [ ! -z "$QEMUVFPCPUS" ]; then
+  QEMUVFPNUMA="numactl --membind=$NUMANODE --physcpubind=$QEMUVFPCPUS"
+fi
+QEMUVCPNUMA="numactl --membind=$NUMANODE"
+if [ ! -z "$QEMUVCPCPUS" ]; then
+  QEMUVCPNUMA="numactl --membind=$NUMANODE --physcpubind=$QEMUVCPCPUS"
 fi
 
-echo "QEMUTASKSET=$QEMUTASKSET"
+echo "QEMUVFPNUMA=$QEMUVFPNUMA"
 
 # calculate the cpu affinity mask excluding the ones for snabb
 AVAIL_CORES=$(taskset -p $$|cut -d: -f2|cut -d' ' -f2)
 
-echo "CPULIST=$CPULIST AVAIL_CORES=$AVAIL_CORES QEMUCPULIST=$QEMUCPULIST"
+echo "CPULIST=$CPULIST AVAIL_CORES=$AVAIL_CORES QEMUVFPCPUS=$QEMUVFPCPUS"
 
 SNABB_AFFINITY=$(taskset -c $CPULIST /usr/bin/env bash -c 'taskset -p $$'|cut -d: -f2|cut -d' ' -f2)
 let AFFINITY_MASK="0x$AVAIL_CORES ^ 0x$SNABB_AFFINITY"
 AFFINITY_MASK=$(printf '%x\n' $AFFINITY_MASK)
+# Note: doesn't work with numactl: it will refuse to use a cpu that is masked out
 #echo "set cpu affinity mask $AFFINITY_MASK for everything but snabb"
 #taskset -p $AFFINITY_MASK $$
 echo "taskset -p $AFFINITY_MASK \$\$" >> /root/.bashrc
@@ -409,8 +436,10 @@ else
   MEMBACKEND=""
 fi
 
-CMD="$QEMUTASKSET $qemu -M pc -smp $VFPCPU --enable-kvm -m $VFPMEM \
-  -cpu SandyBridge,+rdrand,+fsgsbase,+f16c $MEMBACKEND \
+CMD="$QEMUVFPNUMA $qemu -M pc -smp $VFPCPU,sockets=1,cores=$VFPCPU,threads=1 \
+  --enable-kvm -m $VFPMEM \
+  -cpu Haswell,+abm,+pdpe1gb,+rdrand,+f16c,+osxsave,+dca,+pdcm,+xtpr,+tm2,+est,+smx,+vmx,+ds_cpl,+monitor,+dtes64,+pbe,+tm,+ht,+ss,+acpi,+ds,+vme,-rtm,-hle \
+  $MEMBACKEND -realtime mlock=off \
   -drive if=ide,file=$VFPIMAGE,format=raw \
   -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
@@ -439,7 +468,7 @@ fi
 
 cd /tmp && numactl --membind=$NUMANODE /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
 
-CMD="$QEMUTASKSET $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
+CMD="$QEMUVCPNUMA $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
   -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \
   -usb -usbdevice disk:format=raw:/metadata.img \
   -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \

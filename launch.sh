@@ -229,6 +229,7 @@ shift
 
 if [ ! -f "/u/$image" ]; then
   echo "Error: Can't find image $image"
+  show_help
   exit 1
 fi 
 # find numanode to use based on PCI list.

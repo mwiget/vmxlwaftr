@@ -31,4 +31,4 @@ EXPOSE 8700
 
 ENTRYPOINT ["/launch.sh"]
 
-CMD [""]
+CMD ["-h"]

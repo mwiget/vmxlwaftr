@@ -251,12 +251,8 @@ for DEV in $@; do # ============= loop thru interfaces start
 done
 
 mkdir /var/run/snabb
-mkdir /var/run/snmp
 numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
-numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snmp
-mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=5G tmpfs /tmp
-
-
+#numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=8G tmpfs /tmp
 
 if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
@@ -439,7 +435,7 @@ fi
 CMD="$QEMUVFPNUMA $qemu -M pc -smp $VFPCPU,sockets=1,cores=$VFPCPU,threads=1 \
   --enable-kvm -m $VFPMEM \
   -cpu Haswell,+abm,+pdpe1gb,+rdrand,+f16c,+osxsave,+dca,+pdcm,+xtpr,+tm2,+est,+smx,+vmx,+ds_cpl,+monitor,+dtes64,+pbe,+tm,+ht,+ss,+acpi,+ds,+vme,-rtm,-hle \
-  $MEMBACKEND -realtime mlock=off \
+  $MEMBACKEND -realtime mlock=on \
   -drive if=ide,file=$VFPIMAGE,format=raw \
   -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \

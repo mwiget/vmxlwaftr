@@ -436,11 +436,16 @@ CMD="$QEMUVFPNUMA $qemu -M pc -smp $VFPCPU,sockets=1,cores=$VFPCPU,threads=1 \
   --enable-kvm -m $VFPMEM \
   -cpu Haswell,+abm,+pdpe1gb,+rdrand,+f16c,+osxsave,+dca,+pdcm,+xtpr,+tm2,+est,+smx,+vmx,+ds_cpl,+monitor,+dtes64,+pbe,+tm,+ht,+ss,+acpi,+ds,+vme,-rtm,-hle \
   $MEMBACKEND -realtime mlock=on \
+  -no-user-config -nodefaults \
+  -device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 \
+  -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
+  -device AC97,id=sound0,bus=pci.0,addr=0x5 \
   -drive if=ide,file=$VFPIMAGE,format=raw \
   -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
   -netdev tap,id=tf1,ifname=$VFPINT,script=no,downscript=no \
   -device virtio-net-pci,netdev=tf1,mac=$MACP:B1 \
+  -device virtio-balloon-pci,id=balloon0,bus=pci.0,addr=0xa -msg timestamp=on \
   -device isa-serial,chardev=charserial0,id=serial0 \
   -chardev socket,id=charserial0,host=0.0.0.0,port=8700,telnet,server,nowait \
   $NETDEVS -daemonize"

@@ -39,6 +39,23 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
   -i -t marcelwiget/vmxlwaftr -c lwaftr1.txt -i snabbvmx.key \\
   jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0/7 0000:05:00.0/8
 
+## Release v0.3
+
+- Fix linkup detection on some Intel 82599 card/cable combination 
+
+## Release v0.2
+
+- Monitor QPRDC and run jit.flush() if threshold exceeded
+- remove snmp
+- added info on mlock=on
+- pass all traffic thru vmx if refresh interval set to 0
+- show help if run without arguments
+- options to define CPU list for vRE/vPFE, auto-calculate numa node
+
+[https://github.com/mwiget/vmxlwaftr/tree/vmxlwaftr_v0.2]()
+
+[https://github.com/mwiget/snabbswitch/tree/vmxlwaftr_v0.2]()
+
 ## Release v0.1
 
 [https://github.com/mwiget/vmxlwaftr/tree/vmxlwaftr_v0.1]()

@@ -41,6 +41,7 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
 
 ## Release v0.3
 
+- Bug fixes in snabb with fragmentation and packets not matching binding table
 - Fix linkup detection on some Intel 82599 card/cable combination 
 
 ## Release v0.2

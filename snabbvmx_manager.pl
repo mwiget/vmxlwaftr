@@ -110,6 +110,10 @@ sub process_new_config {
       print CFG "    cache_refresh_interval = $1,\n";
     } elsif ($_ =~ /vlan\s+(\d+)/) {
       print CFG "    vlan = $1,\n";
+    } elsif ($_ =~ /discard_threshold\s+(\d+)/) {
+      print CFG "    discard_threshold = $1,\n";
+    } elsif ($_ =~ /discard_check_timer\s+(\d+)/) {
+      print CFG "    discard_check_timer = $1,\n";
     } elsif ($_ =~ /(\w+filter)\s+([^;]+)/) {
       my $filter_name="$1";
       my $filter_expr=$2;

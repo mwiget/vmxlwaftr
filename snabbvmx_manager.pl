@@ -210,8 +210,8 @@ sub check_config {
   `/usr/bin/ssh -o StrictHostKeyChecking=no -i $identity snabbvmx\@$ip show conf groups > /tmp/config.new1`;
 
   my $newfile = "/tmp/config.new";
-  open NEW, ">$newfile" || die "can't write to file $newfile";
-  open IP, "/tmp/config.new1" || die "can't open file /tmp/config.new1";
+  open NEW, ">$newfile" or die "can't write to file $newfile";
+  open IP, "/tmp/config.new1" or die "can't open file /tmp/config.new1";
   my $file;
   while (<IP>) {
     if ($_ =~ /binding_table_file\s+([\w.]+)/) {
@@ -220,7 +220,7 @@ sub check_config {
       my $f="/var/db/scripts/commit/$file";
       `/usr/bin/scp -o StrictHostKeyChecking=no -i $identity snabbvmx\@$ip:$f .`;
       print("reading file $file ...\n");
-      open R, "$file" || die "can't open file $file";
+      open R, "$file" or die "can't open file $file";
       while (<R>) {
         print NEW $_;
       }
@@ -249,14 +249,14 @@ sub check_config {
 #
 if ("" eq $identity && -f $ip) {
   my $newfile = "/tmp/newfile";
-  open NEW, ">$newfile" || die "can't write to file $newfile";
-  open IP, "$ip" || die "can't open file $ip";
+  open NEW, ">$newfile" or die "can't write to file $newfile";
+  open IP, "$ip" or die "can't open file $ip";
   my $file;
   while (<IP>) {
     if ($_ =~ /binding_table_file\s+([\w.]+)/) {
       $file=$1;
       print("reading file $file ...\n");
-      open R, "$file" || die "can't open file $file";
+      open R, "$file" or die "can't open file $file";
       while (<R>) {
         print NEW $_;
       }
@@ -276,7 +276,7 @@ open CMD,'-|',"echo '<rpc><get-syslog-events> <stream>messages</stream> <event>U
 my $line;
 while (defined($line=<CMD>)) {
   chomp $line;
-  if ($line =~ /<syslog-events>/ || $line =~ /UI_COMMIT_COMPLETED/) {
+  if ($line =~ /<syslog-events>/ or $line =~ /UI_COMMIT_COMPLETED/) {
     print("check for config change...\n");
     &check_config();
 

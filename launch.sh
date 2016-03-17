@@ -237,7 +237,7 @@ fi
 for DEV in $@; do # ============= loop thru interfaces start
   PCI=${DEV%/*} 
   if [ "12" -eq "${#PCI}" ]; then
-    CPU=$(cat /sys/class/pci_bus/${PCI%:*}/cpulistaffinity | cut -d "-" -f 1)
+    CPU=$(cat /sys/class/pci_bus/${PCI%:*}/cpulistaffinity | cut -d'-' -f1 | cut -d',' -f1)
     NODE=$(numactl -H | grep "cpus: $CPU" | cut -d " " -f 2)
     if [ -z "$NUMANODE" ]; then
       NUMANODE=$NODE

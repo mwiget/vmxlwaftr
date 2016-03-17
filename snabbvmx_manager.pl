@@ -126,8 +126,8 @@ sub process_new_config {
       print LWA "$1 = $2,\n";
     } elsif (/(ipv\d_mtu)\s+(\d+)/) {
       print LWA "$1 = $2,\n";
-    } elsif (/hairpinning/) {
-      print LWA "hairpinning = true,\n";
+    } elsif (/no_hairpinning/) {
+      print LWA "hairpinning = false,\n";
     } elsif (/([\w:]+)+\s+(\d+.\d+.\d+.\d+),(\d+),(\d+),(\d+)/) {
       # binding entry ipv6 ipv4,psid,psid_len,offset
       my $shift=16 - $4 - $5;

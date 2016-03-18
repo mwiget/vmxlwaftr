@@ -39,6 +39,13 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
   -i -t marcelwiget/vmxlwaftr -c lwaftr1.txt -i snabbvmx.key \\
   jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0/7 0000:05:00.0/8
 
+## Release v0.4
+
+- make discard_check_timer and threshold configurable
+- change config knob to no_hairpinning
+- fix error handling when files aren't available.
+- Fix calculation of numanode
+
 ## Release v0.3
 
 - Bug fixes in snabb with fragmentation and packets not matching binding table

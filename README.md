@@ -39,6 +39,10 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
   -i -t marcelwiget/vmxlwaftr -c lwaftr1.txt -i snabbvmx.key \\
   jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0/7 0000:05:00.0/8
 
+## Release v0.5
+
+- fix mtu and display its setting at startup on console
+
 ## Release v0.4
 
 - make discard_check_timer and threshold configurable

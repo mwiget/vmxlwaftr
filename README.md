@@ -39,6 +39,21 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
   -i -t marcelwiget/vmxlwaftr -c lwaftr1.txt -i snabbvmx.key \\
   jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0/7 0000:05:00.0/8
 
+## Release v0.6
+
+- Add "discard_wait <seconds>" to config to wait until jit.flush triggers again
+  groups {
+    snabbvmx-lwaftr-xe0 {
+      apply-macro settings {
+        discard_threshold 100000;
+        discard_check_timer 1;
+        discard_wait 20;
+      }
+      ...
+
+- Add ingress/egress filter (ACL) support
+- Fix panic in passthru mode due to undefined discard_threshold
+
 ## Release v0.5
 
 - fix mtu and display its setting at startup on console

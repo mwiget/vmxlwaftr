@@ -114,6 +114,8 @@ sub process_new_config {
       print CFG "    discard_threshold = $1,\n";
     } elsif ($_ =~ /discard_check_timer\s+(\d+)/) {
       print CFG "    discard_check_timer = $1,\n";
+    } elsif ($_ =~ /discard_wait\s+(\d+)/) {
+      print CFG "    discard_wait = $1,\n";
     } elsif ($_ =~ /(\w+filter)\s+([^;]+)/) {
       my $filter_name="$1";
       my $filter_expr=$2;

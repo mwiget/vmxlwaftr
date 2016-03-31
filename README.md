@@ -35,13 +35,36 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 ```
 
 Example:
+
+```
 docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
   -i -t marcelwiget/vmxlwaftr -c lwaftr1.txt -i snabbvmx.key \\
   jinstall64-vrr-14.2R5.8-domestic.img 0000:05:00.0/7 0000:05:00.0/8
+```
+
+## Release v0.7
+
+- Fix vlan support: Set vlan id under settings instead of ipv4_interface or
+  ipv6_interfaces, because that vlan id is used for both
+
+```
+  groups {
+    snabbvmx-lwaftr-xe0 {
+      apply-macro settings {
+        ring_buffer_size 1024;
+        discard_threshold 100000;
+        discard_check_timer 1;
+        discard_wait 15;
+        vlan 100;
+      }
+    ....
+```
 
 ## Release v0.6
 
 - Add "discard_wait <seconds>" to config to wait until jit.flush triggers again
+
+```
   groups {
     snabbvmx-lwaftr-xe0 {
       apply-macro settings {
@@ -50,8 +73,39 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
         discard_wait 20;
       }
       ...
+   ```
+     
 
-- Add ingress/egress filter (ACL) support
+- Add ingress/egress filter (ACL) support via PcapFilter:
+[ https://github.com/SnabbCo/snabbswitch/tree/master/src/apps/packet_filter]()
+  for ingress and egress and IPv4 and IPv6. The filter syntax is according
+    to pcap-filter: [http://www.tcpdump.org/manpages/pcap-filter.7.html]()
+    
+```
+    apply-macro ipv6_interface {
+      ipv6_address 2001:db7:1::1;
+      ipv6_mtu 9500;
+      policy_icmpv6_incoming drop;
+      policy_icmpv6_outgoing drop;
+      icmpv6_rate_limiter_n_packets 6e5;
+      icmpv6_rate_limiter_n_seconds 2;
+      cache_refresh_interval 1;
+      no_hairpinning;
+      ipv6_ingress_filter "ip6";
+      ipv6_egress_filter "ip6";
+    }
+      apply-macro ipv4_interface {
+        ipv4_address 172.20.1.16;
+        ipv4_mtu 9500;
+        policy_icmpv4_incoming drop;
+        policy_icmpv4_outgoing drop;
+        cache_refresh_interval 1;
+        ipv4_ingress_filter "ip";
+        ipv4_egress_filter "ip";
+        no_hairpinning;
+      }
+```
+
 - Fix panic in passthru mode due to undefined discard_threshold
 
 ## Release v0.5

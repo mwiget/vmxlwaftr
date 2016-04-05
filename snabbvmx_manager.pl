@@ -34,14 +34,15 @@ sub process_new_config {
   my $br_address_idx=-1;
   my $addresses;
   my @softwires;
-  my $mac;
+  my $mac1;
+  my $mac2;
   my @files_config;
   my @files_lwaftr;
   my @files;
 
   while(<IN>) {
     chomp;
-    if ($_ =~ /snabbvmx-lwaftr-(xe\d+)/) {
+    if ($_ =~ /snabbvmx-lwaftr-(xe\d+)-(xe\d+)/) {
       if ("" ne $snabbvmx_config_file) {
         if ($closeme == 1) {
           print CFG "  },\n";
@@ -51,8 +52,10 @@ sub process_new_config {
         close CFG;
         close LWA;
       }
-      $mac = do{local(@ARGV,$/)="mac_$1";<>};
-      chomp($mac);
+      $mac1 = do{local(@ARGV,$/)="mac_$1";<>};  # IPv6 / B4 MAC
+      $mac2 = do{local(@ARGV,$/)="mac_$2";<>};  # IPv4 / INET MAC
+      chomp($mac1);
+      chomp($mac2);
       print $file_content,"\n";
 
       $snabbvmx_config_file = "snabbvmx-lwaftr-$1.cfg";
@@ -89,7 +92,7 @@ sub process_new_config {
     } elsif ($_ =~ /ipv6_address\s+([\w:]+)/) {
       print CFG "    ipv6_address = \"$1\",\n";
       print LWA "aftr_ipv6_ip = $1,\n";
-      print LWA "aftr_mac_inet_side = $mac,\n";
+      print LWA "aftr_mac_inet_side = $mac2,\n";
       print LWA "inet_mac = 44:44:44:44:44:44,\n";
     } elsif ($_ =~ /next_hop_mac\s+([\w.:-]+)/) {
       print CFG "    next_hop_mac = \"$1\",\n";
@@ -98,7 +101,7 @@ sub process_new_config {
     } elsif ($_ =~ /ipv4_address\s+([\w.]+)/) {
       print CFG "    ipv4_address = \"$1\",\n";
       print LWA "aftr_ipv4_ip = $1,\n";
-      print LWA "aftr_mac_b4_side = $mac,\n";
+      print LWA "aftr_mac_b4_side = $mac1,\n";
       print LWA "next_hop6_mac = 66:66:66:66:66:66,\n";
     } elsif ($_ =~ /ring_buffer_size\s+(\d+)/) {
       print CFG "    ring_buffer_size = $1,\n";
@@ -130,8 +133,12 @@ sub process_new_config {
       print LWA "$1 = " . uc($2) . ",\n";
     } elsif (/(icmp\w+)\s+(\w+)/) {
       print LWA "$1 = $2,\n";
-    } elsif (/(ipv\d_mtu)\s+(\d+)/) {
-      print LWA "$1 = $2,\n";
+    } elsif (/ipv6_mtu\s+(\d+)/) {
+      print LWA "ipv6_mtu = $1,\n";
+      print CFG "    mtu = $1,\n";
+    } elsif (/ipv4_mtu\s+(\d+)/) {
+      print LWA "ipv4_mtu = $1,\n";
+      print CFG "    mtu = $1,\n";
     } elsif (/no_hairpinning/) {
       print LWA "hairpinning = false,\n";
     } elsif (/([\w:]+)+\s+(\d+.\d+.\d+.\d+),(\d+),(\d+),(\d+)/) {

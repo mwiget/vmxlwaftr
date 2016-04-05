@@ -320,7 +320,7 @@ trap cleanup EXIT SIGINT SIGTERM
 
 echo "Building virtual interfaces and bridges for $@ ..."
 
-INTNR=0	# added to each tap interface to make them unique
+INTNR0=0	# added to each tap interface to make them unique
 INTID="xe"
 
 MACP=$(printf "02:%02X:%02X:%02X:%02X" $[RANDOM%256] $[RANDOM%256] $[RANDOM%256] $[RANDOM%256])
@@ -343,20 +343,28 @@ for DEV in $@; do # ============= loop thru interfaces start
     PCIDEVS="$PCIDEVS $PCI"
     # create persistent mac address based on host-name in junos config file
     h=$(grep host-name /u/$CONFIG |md5sum)
-    macaddr="02:${h:0:2}:${h:2:2}:${h:4:2}:${PCI:5:2}:0${PCI:11:1}"
-    INT="${INTID}${INTNR}"
-    INTLIST="$INTLIST $INT"
-    echo "$PCI/$CORE" > /tmp/pci_$INT
-    echo "$macaddr" > /tmp/mac_$INT
+    INTNR1=$(($INTNR0 + 1))
+    macaddr0="02:${h:0:2}:${h:2:2}:${h:4:2}:${PCI:5:2}:0${PCI:11:1}"
+    macaddr1="02:${h:0:2}:${h:2:2}:${h:4:2}:${PCI:5:2}:1${PCI:11:1}"
+    INT0="${INTID}${INTNR0}"
+    INT1="${INTID}${INTNR1}"
+    INTLIST="$INTLIST $INT0"
+    echo "$PCI/$CORE" > /tmp/pci_$INT0
+    echo "$macaddr0" > /tmp/mac_$INT0
+    echo "$macaddr1" > /tmp/mac_$INT1
 
     if [ -z "$VMXTAP" ]; then
-      NETDEVS="$NETDEVS -chardev socket,id=char$INTNR,path=./${INT}.socket,server \
-        -netdev type=vhost-user,id=net$INTNR,chardev=char$INTNR \
-        -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
+      NETDEVS="$NETDEVS -chardev socket,id=char$INTNR0,path=./${INT0}.socket,server \
+        -netdev type=vhost-user,id=net$INTNR0,chardev=char$INTNR0 \
+        -device virtio-net-pci,netdev=net$INTNR0,mac=$macaddr0"
+      NETDEVS="$NETDEVS -chardev socket,id=char$INTNR1,path=./${INT1}.socket,server \
+        -netdev type=vhost-user,id=net$INTNR1,chardev=char$INTNR1 \
+        -device virtio-net-pci,netdev=net$INTNR1,mac=$macaddr1"
     else
-      XE_SNABB="xe${INTNR}_snabb"
-      XE_VMX="xe${INTNR}_vmx"
-      VMXBRIDGE="brxe$INTNR"
+      XE_SNABB="xe${INTNR0}_snabb"
+      XE_VMX0="xe${INTNR0}_vmx"
+      XE_VMX1="xe${INTNR1}_vmx"
+      VMXBRIDGE="brxe$INTNR0"
       sysctl net.ipv6.conf.all.forwarding=1
       sysctl net.ipv4.conf.all.forwarding=1
       $(create_tap_if $XE_SNABB)
@@ -365,14 +373,14 @@ for DEV in $@; do # ============= loop thru interfaces start
       $(addif_to_bridge $VMXBRIDGE $XE_VMX)
       $(addif_to_bridge $VMXBRIDGE $XE_SNABB)
       brctl setageing $VMXBRIDGE 0
-      NETDEVS="$NETDEVS -netdev tap,id=net$INTNR,ifname=$XE_VMX,script=no,downscript=no \
-        -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
+      NETDEVS="$NETDEVS -netdev tap,id=net$INTNR0,ifname=$XE_VMX,script=no,downscript=no \
+        -device virtio-net-pci,netdev=net$INTNR0,mac=$macaddr0"
     fi
 
-    TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
+    TAP="$INTID${INTNR0}"    # -> tap/monitor interfaces xe0, xe1 etc
     $(create_tap_if $TAP)
 
-    INTNR=$(($INTNR + 1))
+    INTNR0=$(($INTNR0 + 2))
   else
     echo "reserving CPU $CORE for someone else"
   fi

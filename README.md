@@ -44,6 +44,9 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
 
 ## Release v0.7
 
+- Change to dual mode: 2 virtio interfaces per physical port, separating
+  v4 (internet) from v6 (B4) by registring two MAC addresses with the NIC
+
 - Fix vlan support: Set vlan id under settings instead of ipv4_interface or
   ipv6_interfaces, because that vlan id is used for both
 

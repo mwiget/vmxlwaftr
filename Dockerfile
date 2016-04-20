@@ -3,7 +3,7 @@ MAINTAINER Marcel Wiget
 
 # Install enough packages to compile snabb and qemu
 RUN apt-get update && apt-get install -y --no-install-recommends net-tools \
-  iproute2 dosfstools tcpdump bridge-utils numactl
+  iproute2 dosfstools tcpdump bridge-utils numactl genisoimage
 
 # fix usr/sbin/tcpdump by moving it into /sbin: error while loading shared libraries: libcrypto.so.1.0.0: cannot open shared object file: Permission denied
 RUN mv /usr/sbin/tcpdump /sbin/
@@ -22,7 +22,7 @@ RUN apt-get install -y --no-install-recommends build-essential git ca-certificat
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/* /snabbswitch /qemu
 
-COPY launch.sh README.md snabbvmx_manager.pl add_license.sh add_bindings.sh \
+COPY launch.sh README.md snabbvmx_manager.pl add_bindings.sh \
   launch_snabbvmx_manager.sh launch_snabb.sh show_affinity.sh top.sh topl.sh /
 
 COPY snabb /usr/local/bin/

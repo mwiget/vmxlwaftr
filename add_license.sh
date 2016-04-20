@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# no longer needed. 15.1F4 has limited config_drive support
+# that allows placing license.lic files on it and load them at genesis
+
 MGMTIP=$1
 IDENTITY=$2
 LICENSE=$3

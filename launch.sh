@@ -18,6 +18,7 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
    --privileged -i -t marcelwiget/vmxlwaftr[:version] \\
    -c <junos_config_file> -i identity [-l license_file] \\
    [-m <kbytes>] [-M <kBytes>] [-V <cores>] [-W <cores>] \\
+   [-u <user_data_file> ] \\
    <image> <pci-address/core> [<pci-address/core> ...]
 
 [:version]       Container version. Defaults to :latest
@@ -42,6 +43,8 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
 
  -P  cpu list for vPFE
  -R  cpu list for vRE
+
+ -u  Userdata file for non-vMX mode
 
 <pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
                     core to pin snabb on.
@@ -152,10 +155,40 @@ function create_vmxhdd {
   echo "/tmp/vmxhdd.img"
 }
 
+# prepare cloud-init config drive for non-vMX mode
+function create_cloud_init {
+  echo "create_cloud_init called"
+  mkdir config_drive
+  mkdir -p config_drive/openstack/2012-08-10
+  ln -s 2012-08-10 config_drive/openstack/latest
+  cat > config_drive/openstack/latest/meta_data.json << EOF
+{
+  "uuid": "$VMIMAGE",
+  "files": [
+{
+  "content_path": "/latest/user_data",
+  "path": "/etc/network/interfaces"
+}
+]
+}
+EOF
+
+  echo "cloud-init userdata file: $USERDATA"
+
+  if [ -f "/u/$USERDATA" ]; then
+   echo "creating user_data ..."
+   cat /u/$USERDATA > config_drive/openstack/latest/user_data
+  fi
+  mkisofs -R -V config-2 -o disk.config config_drive
+}
+
 function create_config_drive {
   >&2 echo "Creating config drive (metadata.img) ..."
   mkdir config_drive
   mkdir config_drive/boot
+  mkdir config_drive/var
+  mkdir config_drive/var/db
+  mkdir config_drive/var/db/vmm
   mkdir config_drive/config
   mkdir config_drive/config/license
   cat > config_drive/boot/loader.conf <<EOF
@@ -163,17 +196,22 @@ vmchtype="vmx"
 vm_retype="RE-VMX"
 vm_instance="0"
 EOF
+  >&2 echo "LICENSE=$license"
+  if [ -f "/u/$LICENSE" ]; then
+    >&2 echo "copying $LICENSE"
+    cp /u/$LICENSE config_drive/config/license/
+  fi
   cp /u/$CONFIG config_drive/config/juniper.conf
   # placing license files on the config drive isn't supported yet
   # but it is assumed, this is how it will work.
-  if [ -f *.lic ]; then
-    for f in *.lic; do
-      cp $f config_drive/config/license
-    done
-  fi
+#  if [ -f *.lic ]; then
+#    for f in *.lic; do
+#      cp $f config_drive/config/license
+#    done
+#  fi
   cd config_drive
   tar zcf vmm-config.tgz *
-  rm -rf boot config
+  rm -rf boot config var
   cd ..
   # Create our own metadrive image, so we can use a junos config file
   # 100MB should be enough.
@@ -190,7 +228,7 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:V:W:M:P:R:td" opt; do
+while getopts "h?c:m:l:i:V:W:M:P:R:tdu:" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -209,6 +247,8 @@ while getopts "h?c:m:l:i:V:W:M:P:R:td" opt; do
     l)  LICENSE=$OPTARG
       ;;
     i)  IDENTITY=$OPTARG
+      ;;
+    u)  USERDATA=$OPTARG
       ;;
     P)  QEMUVFPCPUS=$OPTARG
       ;;
@@ -252,7 +292,6 @@ done
 
 mkdir /var/run/snabb
 numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
-#numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=8G tmpfs /tmp
 
 if [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
@@ -269,23 +308,29 @@ if [[ "$image" =~ \.tgz$ ]]; then
   VFPIMAGE="/tmp/$(basename $VFPIMAGE)"
   rm -rf /tmp/vmx*
 else
-  echo "Error: $image must be a .tgz file"
-  exit 1
-fi
-
-if [ ! -f "/u/$IDENTITY" ]; then
-  echo "Error: Can't find private key file $identity"
-  exit 1
-fi
-
-cp /u/$IDENTITY .
-IDENTITY="/$(basename $IDENTITY)"
-HDDIMAGE=$(create_vmxhdd)
-MGMTIP="128.0.0.1"
-if [ -z "$VMXTAP" ]; then
+  echo "Using $image in non-vMX mode"
+  cp /u/$image /tmp
+  VMIMAGE="/tmp/$image"
   $(mount_hugetables)
+  $(create_cloud_init)
 fi
-$(create_config_drive)
+
+if [ ! -z "$VCPIMAGE" ]; then
+  if [ ! -f "/u/$IDENTITY" ]; then
+    echo "Error: Can't find private key file $identity"
+    exit 1
+  fi
+
+  cp /u/$IDENTITY .
+  IDENTITY="/$(basename $IDENTITY)"
+  HDDIMAGE=$(create_vmxhdd)
+  MGMTIP="128.0.0.1"
+  if [ -z "$VMXTAP" ]; then
+    $(mount_hugetables)
+  fi
+  $(create_config_drive)
+fi
+
 BRMGMT=$(create_mgmt_bridge)
 BRINT=$(create_int_bridge)
 # Create unique 4 digit ID used for this vMX in interface names
@@ -307,8 +352,9 @@ $(addif_to_bridge $BRINT $VFPINT)
 
 cat <<EOF
 
-  vRE/VCP $VCPIMAGE with ${VCPMEM}kB and ${VCPCPU} cores
-  vPFE/VFP $VFPIMAGE with ${VFPMEM}kB and ${VFPCPU} cores
+  vRE/VCP=$VCPIMAGE with ${VCPMEM}kB and ${VCPCPU} cores
+  vPFE/VFP=$VFPIMAGE with ${VFPMEM}kB and ${VFPCPU} cores
+  VMIMAGE=$VMIMAGE
   mgmt bridge $BRMGMT with interfaces $VCPMGMT and $VFPMGMT
   internal interface $VCPMGMT IP $MGMTIP BRMGMT $BRMGMT
   config=$CONFIG license=$LICENSE identity=$IDENTITY
@@ -432,52 +478,68 @@ else
   MEMBACKEND=""
 fi
 
-CMD="$QEMUVFPNUMA $qemu -M pc -smp $VFPCPU,sockets=1,cores=$VFPCPU,threads=1 \
-  --enable-kvm -m $VFPMEM \
-  -cpu Haswell,+abm,+pdpe1gb,+rdrand,+f16c,+osxsave,+dca,+pdcm,+xtpr,+tm2,+est,+smx,+vmx,+ds_cpl,+monitor,+dtes64,+pbe,+tm,+ht,+ss,+acpi,+ds,+vme,-rtm,-hle \
-  $MEMBACKEND -realtime mlock=on \
-  -no-user-config -nodefaults \
-  -device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 \
-  -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
-  -device AC97,id=sound0,bus=pci.0,addr=0x5 \
-  -drive if=ide,file=$VFPIMAGE,format=raw \
-  -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
-  -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
-  -netdev tap,id=tf1,ifname=$VFPINT,script=no,downscript=no \
-  -device virtio-net-pci,netdev=tf1,mac=$MACP:B1 \
-  -device virtio-balloon-pci,id=balloon0,bus=pci.0,addr=0xa -msg timestamp=on \
-  -device isa-serial,chardev=charserial0,id=serial0 \
-  -chardev socket,id=charserial0,host=0.0.0.0,port=8700,telnet,server,nowait \
-  $NETDEVS -daemonize"
-echo $CMD
+if [ ! -z "$VFPIMAGE" ]; then
+  CMD="$QEMUVFPNUMA $qemu -M pc -smp $VFPCPU,sockets=1,cores=$VFPCPU,threads=1 \
+    --enable-kvm -m $VFPMEM \
+    -cpu Haswell,+abm,+pdpe1gb,+rdrand,+f16c,+osxsave,+dca,+pdcm,+xtpr,+tm2,+est,+smx,+vmx,+ds_cpl,+monitor,+dtes64,+pbe,+tm,+ht,+ss,+acpi,+ds,+vme,-rtm,-hle \
+    $MEMBACKEND -realtime mlock=on \
+    -no-user-config -nodefaults \
+    -device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 \
+    -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
+    -device AC97,id=sound0,bus=pci.0,addr=0x5 \
+    -drive if=ide,file=$VFPIMAGE,format=raw \
+    -netdev tap,id=tf0,ifname=$VFPMGMT,script=no,downscript=no \
+    -device virtio-net-pci,netdev=tf0,mac=$MACP:A1 \
+    -netdev tap,id=tf1,ifname=$VFPINT,script=no,downscript=no \
+    -device virtio-net-pci,netdev=tf1,mac=$MACP:B1 \
+    -device virtio-balloon-pci,id=balloon0,bus=pci.0,addr=0xa -msg timestamp=on \
+    -device isa-serial,chardev=charserial0,id=serial0 \
+    -chardev socket,id=charserial0,host=0.0.0.0,port=8700,telnet,server,nowait \
+    $NETDEVS -daemonize"
+  echo $CMD
+  if [ ! -z "$DEBUG" ]; then
+    echo "DEBUG SHELL. Hit ^C to continue"
+    bash
+  fi
+  $CMD
+fi
+
+if [ ! -z "$VMIMAGE" ]; then
+  CMD="$QEMUVFPNUMA $qemu -M pc -smp $VFPCPU,sockets=1,cores=$VFPCPU,threads=1 --enable-kvm -cpu host -m $VFPMEM \
+    $MEMBACKEND -realtime mlock=on \
+    -netdev tap,id=tf0,ifname=em0,script=no,downscript=no \
+    -device virtio-net-pci,netdev=tf0,mac=$macaddr \
+    -drive if=virtio,file=$VMIMAGE,cache=none \
+    -device isa-serial,chardev=charserial0,id=serial0 \
+    -chardev socket,id=charserial0,host=0.0.0.0,port=8700,telnet,server,nowait \
+    -drive file=/disk.config,if=virtio $NETDEVS -curses -vnc :1"
+  echo $CMD
+  if [ ! -z "$DEBUG" ]; then
+    echo "DEBUG SHELL. Hit ^C to continue"
+    bash
+  fi
+  $CMD
+fi
+
 if [ ! -z "$DEBUG" ]; then
   echo "DEBUG SHELL. Hit ^C to continue"
   bash
 fi
-$CMD
 
-if [ ! -z "$DEBUG" ]; then
-  echo "DEBUG SHELL. Hit ^C to continue"
-  bash
+if [ ! -z "$VCPIMAGE" ]; then
+
+  cd /tmp && numactl --membind=$NUMANODE /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
+
+  CMD="$QEMUVCPNUMA $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
+    -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \
+    -usb -usbdevice disk:format=raw:/metadata.img \
+    -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
+    -netdev tap,id=tc0,ifname=$VCPMGMT,script=no,downscript=no \
+    -device e1000,netdev=tc0,mac=$MACP:A0 \
+    -netdev tap,id=tc1,ifname=$VCPINT,script=no,downscript=no \
+    -device virtio-net-pci,netdev=tc1,mac=$MACP:B0 -nographic"
+  echo $CMD
+  $CMD
 fi
-
-if [ -f /u/$LICENSE ]; then
-  cp /u/$LICENSE .
-  LICENSE=$(basename $LICENSE)
-  /add_license.sh $MGMTIP $IDENTITY $LICENSE &
-fi
-
-cd /tmp && numactl --membind=$NUMANODE /launch_snabbvmx_manager.sh $MGMTIP $IDENTITY $BINDINGS &
-
-CMD="$QEMUVCPNUMA $qemu -M pc --enable-kvm -cpu host -smp $VCPCPU -m $VCPMEM \
-  -drive if=ide,file=$VCPIMAGE -drive if=ide,file=$HDDIMAGE \
-  -usb -usbdevice disk:format=raw:/metadata.img \
-  -device cirrus-vga,id=video0,bus=pci.0,addr=0x2 \
-  -netdev tap,id=tc0,ifname=$VCPMGMT,script=no,downscript=no \
-  -device e1000,netdev=tc0,mac=$MACP:A0 \
-  -netdev tap,id=tc1,ifname=$VCPINT,script=no,downscript=no \
-  -device virtio-net-pci,netdev=tc1,mac=$MACP:B0 -nographic"
-echo $CMD
-$CMD
 
 exit  # this will call cleanup, thanks to trap set earlier (hopefully)

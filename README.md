@@ -44,6 +44,20 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
 
 ## Release v0.7
 
+- Use config drive to load license keys
+
+- Cirros test image for CI instead of vMX
+  wget http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
+
+- Improve logging and displaying of cached next_hop_mac for v4 and v6:
+  From within the container, use 'snabb snabbvmx nexthop' to display
+  the cached next hops per snabb process and protocol:
+  # snabb snabbvmx nexthop
+  1354: next_hop_mac for IPv4 is 00:00:00:00:00:00
+  1354: next_hop_mac for IPv6 is 00:00:00:00:00:00
+  1351: next_hop_mac for IPv4 is 02:44:44:44:44:44
+  1351: next_hop_mac for IPv6 is 02:66:66:66:66:66
+
 - Fix vlan support: Set vlan id under settings instead of ipv4_interface or
   ipv6_interfaces, because that vlan id is used for both
 

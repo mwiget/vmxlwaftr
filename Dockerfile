@@ -22,7 +22,7 @@ RUN apt-get install -y --no-install-recommends build-essential git ca-certificat
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/* /snabbswitch /qemu
 
-COPY launch.sh README.md snabbvmx_manager.pl add_bindings.sh \
+COPY launch.sh README.md snabbvmx_manager.pl add_bindings.sh nexthop.sh \
   launch_snabbvmx_manager.sh launch_snabb.sh show_affinity.sh top.sh topl.sh /
 
 COPY snabb /usr/local/bin/

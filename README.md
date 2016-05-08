@@ -44,6 +44,13 @@ docker run --name lwaftr1 --rm --privileged -v \$PWD:/u:ro \\
 
 ## Release v0.7
 
+- Test mode: if a PCI address doesn't exist, its replaced with a tap interface (xe0, xe1, ..)
+  and a packet generator gets launched (/packetblaster-xe0.sh). Great for development, not
+  useful for performance testing (uses linux bridges)
+
+- Support new Occam images by passing the directory name containing the images
+  instead of the vMX tar file name
+
 - Use config drive to load license keys
 
 - Cirros test image for CI instead of vMX

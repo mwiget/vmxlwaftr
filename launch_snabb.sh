@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 INT=$1
-VMXTAP=$2
 
 DEV=$(cat pci_$INT)
 CORE=${DEV#*/}
@@ -22,11 +21,7 @@ do
   fi
 
   echo "launch snabbvmx for $INT on cpu $CORE (node $NODE) after $SLEEP seconds ..."
-  if [ -z "$VMXTAP" ]; then
-    CMD="$NUMACTL $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --sock %s.socket"
-  else
-    CMD="$NUMACTL $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --tap ${INT}_snabb"
-  fi
+  CMD="$NUMACTL $SNABB snabbvmx lwaftr --conf snabbvmx-lwaftr-${INT}.cfg --id $INT --pci $PCI --mac `cat mac_$INT` --sock %s.socket"
   echo $CMD
   sleep $SLEEP
   $CMD

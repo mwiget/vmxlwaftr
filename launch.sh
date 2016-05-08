@@ -21,6 +21,8 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
    [-u <user_data_file> ] \\
    <image> <pci-address/core> [<pci-address/core> ...]
 
+   <image>          vmx tar file or directory name (for occam images)
+
 [:version]       Container version. Defaults to :latest
 
  -v \$PWD:/u:ro   Required to access a file in the current directory
@@ -267,7 +269,9 @@ shift "$((OPTIND-1))"
 image=$1
 shift
 
-if [ ! -f "/u/$image" ]; then
+if [ -d "/u/$image" ]; then
+   echo "Using directory $image for VCP and VFP images"
+elif [ ! -f "/u/$image" ]; then
   echo "Error: Can't find image $image"
   exit 1
 fi 
@@ -293,10 +297,16 @@ done
 mkdir /var/run/snabb
 numactl --membind=$NUMANODE mount -t tmpfs -o rw,nosuid,nodev,noexec,relatime,size=4M tmpfs /var/run/snabb
 
-if [[ "$image" =~ \.tgz$ ]]; then
+if [ -d "/u/$image" ]; then
+  cp /u/$image/images/junos-vmx-*.qcow2 /tmp/
+  VCPIMAGE=$(ls /tmp/junos-vmx-*.qcow2)
+  cp /u/$image/images/vFPC-*.img /tmp/
+  VFPIMAGE=$(ls /tmp/vFPC-*.img)
+  echo "Occam VCPIMAGE=$VCPIMAGE VFPIMAGE=$VFPIMAGE"
+elif [[ "$image" =~ \.tgz$ ]]; then
   echo "extracting VMs from $image ..."
   tar -zxf /u/$image -C /tmp/ --wildcards vmx*/images/vFPC*img --wildcards vmx*/images/jinstall*img --wildcards vmx*/images/vPFE-2*img
-  VCPIMAGE="`ls /tmp/vmx*/images/jinstall64-vmx*img`"
+  VCPIMAGE=$(ls /tmp/vmx*/images/jinstall64-vmx*img)
   mv $VCPIMAGE /tmp
   VCPIMAGE="/tmp/$(basename $VCPIMAGE)"
   VFPIMAGE="`ls /tmp/vmx*/images/vFPC*img 2>/dev/null`"
@@ -383,7 +393,6 @@ for DEV in $@; do # ============= loop thru interfaces start
     CPULIST="$CPULIST,$CORE"
   fi
 
-  if [  "12" -eq "${#PCI}" ]; then
     echo "PCI=$PCI CORE=$CORE CPULIST=$CPULIST"
     # add PCI to list
     PCIDEVS="$PCIDEVS $PCI"
@@ -395,33 +404,38 @@ for DEV in $@; do # ============= loop thru interfaces start
     echo "$PCI/$CORE" > /tmp/pci_$INT
     echo "$macaddr" > /tmp/mac_$INT
 
-    if [ -z "$VMXTAP" ]; then
-      NETDEVS="$NETDEVS -chardev socket,id=char$INTNR,path=./${INT}.socket,server \
+  TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
+  $(create_tap_if $TAP)
+
+  if [ ! -d /sys/class/pci_bus/${PCI%:*}/ ]; then
+     echo "PCI $PCI doesn't exist on this server. Using tap instead"
+    VMXBRIDGE="brxe$INTNR"
+    TAPP="${TAP}p"
+    TAPD="${TAP}d"
+    $(create_tap_if $TAPP)
+    $(create_tap_if $TAPD)
+    $(create_bridge $VMXBRIDGE)
+    $(addif_to_bridge $VMXBRIDGE $TAPD)
+    $(addif_to_bridge $VMXBRIDGE $TAPP)
+    $(addif_to_bridge $VMXBRIDGE $TAP)
+    echo "=====> BRIDGE %VMXBRIDGE ready"
+    SRCMAC="22:22:22:22:22:22"
+#    ip link set $TAPP address $SRCMAC
+    cat > /packetblaster-$TAP.sh <<EOF
+#!/bin/bash
+CMD="snabb snabbvmx generator --tap $TAPP --mtu 9000 --mac $SRCMAC --ipv4 10.10.0.0 --ipv6 2a02:587:f710::40 --lwaftr 2a02:587:f700::100 --count 64000 --size 500 --port 1024 --rate 1 \$@"
+\$CMD
+\$CMD # for some reasons, first run terminates once vMX becomes online ...
+EOF
+  fi
+  chmod a+rx /packetblaster-$TAP.sh
+  /packetblaster-$TAP.sh >/dev/null 2>&1 &
+
+  NETDEVS="$NETDEVS -chardev socket,id=char$INTNR,path=./${INT}.socket,server \
         -netdev type=vhost-user,id=net$INTNR,chardev=char$INTNR \
         -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
-    else
-      XE_SNABB="xe${INTNR}_snabb"
-      XE_VMX="xe${INTNR}_vmx"
-      VMXBRIDGE="brxe$INTNR"
-      sysctl net.ipv6.conf.all.forwarding=1
-      sysctl net.ipv4.conf.all.forwarding=1
-      $(create_tap_if $XE_SNABB)
-      $(create_tap_if $XE_VMX)
-      $(create_bridge $VMXBRIDGE)
-      $(addif_to_bridge $VMXBRIDGE $XE_VMX)
-      $(addif_to_bridge $VMXBRIDGE $XE_SNABB)
-      brctl setageing $VMXBRIDGE 0
-      NETDEVS="$NETDEVS -netdev tap,id=net$INTNR,ifname=$XE_VMX,script=no,downscript=no \
-        -device virtio-net-pci,netdev=net$INTNR,mac=$macaddr"
-    fi
 
-    TAP="$INTID${INTNR}"    # -> tap/monitor interfaces xe0, xe1 etc
-    $(create_tap_if $TAP)
-
-    INTNR=$(($INTNR + 1))
-  else
-    echo "reserving CPU $CORE for someone else"
-  fi
+  INTNR=$(($INTNR + 1))
 done # ===================================== loop thru interfaces done
 
 QEMUVFPNUMA="numactl --membind=$NUMANODE"

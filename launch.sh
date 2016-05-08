@@ -423,9 +423,16 @@ for DEV in $@; do # ============= loop thru interfaces start
 #    ip link set $TAPP address $SRCMAC
     cat > /packetblaster-$TAP.sh <<EOF
 #!/bin/bash
-CMD="snabb snabbvmx generator --tap $TAPP --mtu 9000 --mac $SRCMAC --ipv4 10.10.0.0 --ipv6 2a02:587:f710::40 --lwaftr 2a02:587:f700::100 --count 64000 --size 500 --port 1024 --rate 1 \$@"
-\$CMD
-\$CMD # for some reasons, first run terminates once vMX becomes online ...
+while true;
+do
+ AFTR=\$(grep -A1 br_addresses /tmp/*binding|tail -1|cut -d, -f1|sed 's/ *//')
+ IP4=\$(grep -A1 psid_map /tmp/*binding|tail -1|cut -d{ -f1|sed 's/ *//')
+ IP6=\$(grep -A1 softwires /tmp/*binding|tail -1|cut -d= -f4|cut -d, -f1)
+ COUNT=\$(grep psid /tmp/*binding|wc -l)
+ echo "IP6=\$IP6 IP4=\$IP4 AFTR=\$AFTR COUNT=\$COUNT"
+ snabb snabbvmx generator --tap $TAPP --mtu 9000 --mac $SRCMAC --ipv4 \$IP4 --ipv6 \$IP6 --lwaftr \$AFTR --count \$COUNT --size 500 --port 1024 --rate 1 \$@
+ sleep 2
+done
 EOF
   fi
   chmod a+rx /packetblaster-$TAP.sh

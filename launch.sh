@@ -18,7 +18,7 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
    --privileged -i -t marcelwiget/vmxlwaftr[:version] \\
    -c <junos_config_file> -i identity [-l license_file] \\
    [-m <kbytes>] [-M <kBytes>] [-V <cores>] [-W <cores>] \\
-   [-u <user_data_file> ] \\
+   [-u <user_data_file> ] [-y yang files] \\
    <image> <pci-address/core> [<pci-address/core> ...]
 
    <image>          vmx tar file or directory name (for occam images)
@@ -47,6 +47,8 @@ docker run --name <name> --rm -v \$PWD:/u:ro \\
  -R  cpu list for vRE
 
  -u  Userdata file for non-vMX mode
+
+ -y  YANG modules to load, comma separated
 
 <pci-address/core>  PCI Address of the Intel 825999 based 10GE port with
                     core to pin snabb on.
@@ -191,6 +193,8 @@ function create_config_drive {
   mkdir config_drive/var
   mkdir config_drive/var/db
   mkdir config_drive/var/db/vmm
+  mkdir config_drive/var/db/vmm/etc
+  mkdir config_drive/var/db/vmm/vmxlwaftr
   mkdir config_drive/config
   mkdir config_drive/config/license
   cat > config_drive/boot/loader.conf <<EOF
@@ -198,10 +202,29 @@ vmchtype="vmx"
 vm_retype="RE-VMX"
 vm_instance="0"
 EOF
-  >&2 echo "LICENSE=$license"
   if [ -f "/u/$LICENSE" ]; then
     >&2 echo "copying $LICENSE"
     cp /u/$LICENSE config_drive/config/license/
+  fi
+  if [ ! -z "$YANG" ]; then
+     yangfiles="${YANG//,/ }"
+     yangcmd=""
+     for file in $yangfiles; do 
+        if [ -f "/u/$file" ]; then
+           >&2 echo "YANG file $file"
+           yangcmd="$yangcmd -m /var/db/vmm/vmxlwaftr/$file"
+           cp /u/$file config_drive/var/db/vmm/vmxlwaftr
+        fi
+     done
+    cat > config_drive/var/db/vmm/etc/rc.vmm <<EOF
+echo "YANG import started"
+ls /var/db/vmm/vmxlwaftr
+echo "arg=$yangcmd"
+/bin/sh /usr/libexec/ui/yang-pkg add -X -i vmxlwafr-yang $yangcmd
+echo "YANG import completed"
+EOF
+#    cli -c "request system yang add $yangmodules package vmxlwaftr-yang"
+    chmod a+rx config_drive/var/db/vmm/etc/rc.vmm
   fi
   cp /u/$CONFIG config_drive/config/juniper.conf
   # placing license files on the config drive isn't supported yet
@@ -230,7 +253,7 @@ EOF
 echo "Juniper Networks vMX lwaftr Docker Container (unsupported prototype)"
 echo ""
 
-while getopts "h?c:m:l:i:V:W:M:P:R:tdu:" opt; do
+while getopts "h?c:m:l:i:V:W:M:P:R:tdu:y:" opt; do
   case "$opt" in
     h|\?)
       show_help
@@ -251,6 +274,8 @@ while getopts "h?c:m:l:i:V:W:M:P:R:tdu:" opt; do
     i)  IDENTITY=$OPTARG
       ;;
     u)  USERDATA=$OPTARG
+      ;;
+    y)  YANG=$OPTARG
       ;;
     P)  QEMUVFPCPUS=$OPTARG
       ;;
